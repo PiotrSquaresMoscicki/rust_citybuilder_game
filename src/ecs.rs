@@ -274,12 +274,205 @@ impl<T> std::ops::DerefMut for ComponentRefMut<T> {
     }
 }
 
+/// Trait for systems that can be called with different iterator combinations
+pub trait SystemCall {
+    /// Execute the system with iterators created from the world
+    fn call(&self, world: &World);
+    
+    /// Get the component types that this system accesses mutably (for debugging)
+    fn get_mutable_component_types(&self) -> Vec<TypeId>;
+    
+    /// Get a description of this system for debugging purposes
+    fn get_system_name(&self) -> &str;
+}
+
+/// Implementation for systems that take a single iterator
+pub struct SingleIteratorSystem<A1, A2, F> {
+    function: F,
+    system_name: String,
+    _phantom: PhantomData<(A1, A2)>,
+}
+
+impl<A1, A2, F> SingleIteratorSystem<A1, A2, F>
+where
+    A1: AccessMode + AccessModeToRef<A1::Component>,
+    A2: AccessMode + AccessModeToRef<A2::Component>,
+    F: Fn(EntityIterator<A1, A2>),
+{
+    pub fn new(function: F, system_name: String) -> Self {
+        Self {
+            function,
+            system_name,
+            _phantom: PhantomData,
+        }
+    }
+}
+
+impl<A1, A2, F> SystemCall for SingleIteratorSystem<A1, A2, F>
+where
+    A1: AccessMode + AccessModeToRef<A1::Component>,
+    A2: AccessMode + AccessModeToRef<A2::Component>,
+    F: Fn(EntityIterator<A1, A2>),
+{
+    fn call(&self, world: &World) {
+        let iterator = world.iter_entities::<A1, A2>();
+        (self.function)(iterator);
+    }
+    
+    fn get_mutable_component_types(&self) -> Vec<TypeId> {
+        let mut types = Vec::new();
+        if A1::is_mutable() {
+            types.push(A1::component_type_id());
+        }
+        if A2::is_mutable() {
+            types.push(A2::component_type_id());
+        }
+        types
+    }
+    
+    fn get_system_name(&self) -> &str {
+        &self.system_name
+    }
+}
+
+/// Implementation for systems that take two iterators
+pub struct DualIteratorSystem<A1, A2, B1, B2, F> {
+    function: F,
+    system_name: String,
+    _phantom: PhantomData<(A1, A2, B1, B2)>,
+}
+
+impl<A1, A2, B1, B2, F> DualIteratorSystem<A1, A2, B1, B2, F>
+where
+    A1: AccessMode + AccessModeToRef<A1::Component>,
+    A2: AccessMode + AccessModeToRef<A2::Component>,
+    B1: AccessMode + AccessModeToRef<B1::Component>,
+    B2: AccessMode + AccessModeToRef<B2::Component>,
+    F: Fn(EntityIterator<A1, A2>, EntityIterator<B1, B2>),
+{
+    pub fn new(function: F, system_name: String) -> Self {
+        Self {
+            function,
+            system_name,
+            _phantom: PhantomData,
+        }
+    }
+}
+
+impl<A1, A2, B1, B2, F> SystemCall for DualIteratorSystem<A1, A2, B1, B2, F>
+where
+    A1: AccessMode + AccessModeToRef<A1::Component>,
+    A2: AccessMode + AccessModeToRef<A2::Component>,
+    B1: AccessMode + AccessModeToRef<B1::Component>,
+    B2: AccessMode + AccessModeToRef<B2::Component>,
+    F: Fn(EntityIterator<A1, A2>, EntityIterator<B1, B2>),
+{
+    fn call(&self, world: &World) {
+        let iterator1 = world.iter_entities::<A1, A2>();
+        let iterator2 = world.iter_entities::<B1, B2>();
+        (self.function)(iterator1, iterator2);
+    }
+    
+    fn get_mutable_component_types(&self) -> Vec<TypeId> {
+        let mut types = Vec::new();
+        if A1::is_mutable() {
+            types.push(A1::component_type_id());
+        }
+        if A2::is_mutable() {
+            types.push(A2::component_type_id());
+        }
+        if B1::is_mutable() {
+            types.push(B1::component_type_id());
+        }
+        if B2::is_mutable() {
+            types.push(B2::component_type_id());
+        }
+        types
+    }
+    
+    fn get_system_name(&self) -> &str {
+        &self.system_name
+    }
+}
+
+/// Implementation for systems that take three iterators
+pub struct TripleIteratorSystem<A1, A2, B1, B2, C1, C2, F> {
+    function: F,
+    system_name: String,
+    _phantom: PhantomData<(A1, A2, B1, B2, C1, C2)>,
+}
+
+impl<A1, A2, B1, B2, C1, C2, F> TripleIteratorSystem<A1, A2, B1, B2, C1, C2, F>
+where
+    A1: AccessMode + AccessModeToRef<A1::Component>,
+    A2: AccessMode + AccessModeToRef<A2::Component>,
+    B1: AccessMode + AccessModeToRef<B1::Component>,
+    B2: AccessMode + AccessModeToRef<B2::Component>,
+    C1: AccessMode + AccessModeToRef<C1::Component>,
+    C2: AccessMode + AccessModeToRef<C2::Component>,
+    F: Fn(EntityIterator<A1, A2>, EntityIterator<B1, B2>, EntityIterator<C1, C2>),
+{
+    pub fn new(function: F, system_name: String) -> Self {
+        Self {
+            function,
+            system_name,
+            _phantom: PhantomData,
+        }
+    }
+}
+
+impl<A1, A2, B1, B2, C1, C2, F> SystemCall for TripleIteratorSystem<A1, A2, B1, B2, C1, C2, F>
+where
+    A1: AccessMode + AccessModeToRef<A1::Component>,
+    A2: AccessMode + AccessModeToRef<A2::Component>,
+    B1: AccessMode + AccessModeToRef<B1::Component>,
+    B2: AccessMode + AccessModeToRef<B2::Component>,
+    C1: AccessMode + AccessModeToRef<C1::Component>,
+    C2: AccessMode + AccessModeToRef<C2::Component>,
+    F: Fn(EntityIterator<A1, A2>, EntityIterator<B1, B2>, EntityIterator<C1, C2>),
+{
+    fn call(&self, world: &World) {
+        let iterator1 = world.iter_entities::<A1, A2>();
+        let iterator2 = world.iter_entities::<B1, B2>();
+        let iterator3 = world.iter_entities::<C1, C2>();
+        (self.function)(iterator1, iterator2, iterator3);
+    }
+    
+    fn get_mutable_component_types(&self) -> Vec<TypeId> {
+        let mut types = Vec::new();
+        if A1::is_mutable() {
+            types.push(A1::component_type_id());
+        }
+        if A2::is_mutable() {
+            types.push(A2::component_type_id());
+        }
+        if B1::is_mutable() {
+            types.push(B1::component_type_id());
+        }
+        if B2::is_mutable() {
+            types.push(B2::component_type_id());
+        }
+        if C1::is_mutable() {
+            types.push(C1::component_type_id());
+        }
+        if C2::is_mutable() {
+            types.push(C2::component_type_id());
+        }
+        types
+    }
+    
+    fn get_system_name(&self) -> &str {
+        &self.system_name
+    }
+}
+
 /// World manages entities, component pools, and systems
 pub struct World {
     next_entity_id: Entity,
     entities: Vec<Entity>,
     component_pools: HashMap<TypeId, ComponentPool>,
-    systems: Vec<Box<dyn Fn(&World)>>,
+    systems: Vec<Box<dyn SystemCall>>,
+    legacy_systems: Vec<Box<dyn Fn(&World)>>, // Keep legacy systems for backward compatibility
     pub debug_tracker: DebugTracker,
 }
 
@@ -291,6 +484,7 @@ impl World {
             entities: Vec::new(),
             component_pools: HashMap::new(),
             systems: Vec::new(),
+            legacy_systems: Vec::new(),
             debug_tracker: DebugTracker::new(),
         }
     }
@@ -404,18 +598,123 @@ impl World {
         EntityIterator::new(self)
     }
     
-    /// Add a system to the world
+    /// Add a legacy system to the world (for backward compatibility)
     pub fn add_system<F>(&mut self, system: F)
     where
         F: Fn(&World) + 'static,
     {
-        self.systems.push(Box::new(system));
+        self.legacy_systems.push(Box::new(system));
     }
     
-    /// Run all systems
+    /// Add a system that takes a single entity iterator
+    pub fn add_single_iterator_system<A1, A2, F>(&mut self, system: F, system_name: &str)
+    where
+        A1: AccessMode + AccessModeToRef<A1::Component> + 'static,
+        A2: AccessMode + AccessModeToRef<A2::Component> + 'static,
+        F: Fn(EntityIterator<A1, A2>) + 'static,
+    {
+        let system_impl = SingleIteratorSystem::new(system, system_name.to_string());
+        self.systems.push(Box::new(system_impl));
+    }
+    
+    /// Add a system that takes two entity iterators
+    pub fn add_dual_iterator_system<A1, A2, B1, B2, F>(&mut self, system: F, system_name: &str)
+    where
+        A1: AccessMode + AccessModeToRef<A1::Component> + 'static,
+        A2: AccessMode + AccessModeToRef<A2::Component> + 'static,
+        B1: AccessMode + AccessModeToRef<B1::Component> + 'static,
+        B2: AccessMode + AccessModeToRef<B2::Component> + 'static,
+        F: Fn(EntityIterator<A1, A2>, EntityIterator<B1, B2>) + 'static,
+    {
+        let system_impl = DualIteratorSystem::new(system, system_name.to_string());
+        self.systems.push(Box::new(system_impl));
+    }
+    
+    /// Add a system that takes three entity iterators
+    pub fn add_triple_iterator_system<A1, A2, B1, B2, C1, C2, F>(&mut self, system: F, system_name: &str)
+    where
+        A1: AccessMode + AccessModeToRef<A1::Component> + 'static,
+        A2: AccessMode + AccessModeToRef<A2::Component> + 'static,
+        B1: AccessMode + AccessModeToRef<B1::Component> + 'static,
+        B2: AccessMode + AccessModeToRef<B2::Component> + 'static,
+        C1: AccessMode + AccessModeToRef<C1::Component> + 'static,
+        C2: AccessMode + AccessModeToRef<C2::Component> + 'static,
+        F: Fn(EntityIterator<A1, A2>, EntityIterator<B1, B2>, EntityIterator<C1, C2>) + 'static,
+    {
+        let system_impl = TripleIteratorSystem::new(system, system_name.to_string());
+        self.systems.push(Box::new(system_impl));
+    }
+    
+    /// Run all systems (both new iterator-based and legacy)
     pub fn run_systems(&self) {
+        // Run new iterator-based systems
         for system in &self.systems {
+            system.call(self);
+        }
+        
+        // Run legacy systems for backward compatibility
+        for system in &self.legacy_systems {
             system(self);
+        }
+    }
+    
+    /// Run all new iterator-based systems with debug tracking
+    pub fn run_iterator_systems_with_debug(&mut self) {
+        for system in &self.systems {
+            let mutable_types = system.get_mutable_component_types();
+            let system_name = system.get_system_name();
+            
+            if self.debug_tracker.enabled {
+                // Get all entities that have any of the mutable component types
+                let mut tracked_entities = std::collections::HashSet::new();
+                for &type_id in &mutable_types {
+                    for entity in self.component_pools.get(&type_id).map_or(vec![], |pool| pool.entities().collect()) {
+                        tracked_entities.insert(entity);
+                    }
+                }
+                let entities: Vec<Entity> = tracked_entities.into_iter().collect();
+                
+                // Take snapshot before system execution
+                let mut snapshots = HashMap::new();
+                for &entity in &entities {
+                    for &type_id in &mutable_types {
+                        if let Some(component) = self.get_component_snapshot(entity, type_id) {
+                            snapshots.insert((entity, type_id), component);
+                        }
+                    }
+                }
+                
+                // Run the system
+                system.call(self);
+                
+                // Record diffs after system execution
+                let mut component_diffs = Vec::new();
+                for &entity in &entities {
+                    for &type_id in &mutable_types {
+                        if let Some(old_component) = snapshots.get(&(entity, type_id)) {
+                            if let Some(new_component) = self.get_component_snapshot(entity, type_id) {
+                                // Use diffable trait to get actual differences
+                                if let Some(mut diff) = diff_components(old_component.as_ref(), new_component.as_ref(), type_id) {
+                                    diff.entity_id = entity;
+                                    component_diffs.push(diff);
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                if !component_diffs.is_empty() {
+                    let record = crate::diffing::SystemDiffRecord {
+                        frame_number: self.debug_tracker.frame_number,
+                        system_name: system_name.to_string(),
+                        component_diffs,
+                    };
+                    self.debug_tracker.diff_history.push(record);
+                }
+            } else {
+                // Just run the system without tracking
+                system.call(self);
+            }
         }
     }
     
@@ -442,6 +741,16 @@ impl World {
     /// Clear debug history
     pub fn clear_debug_history(&mut self) {
         self.debug_tracker.clear_history();
+    }
+    
+    /// Get the number of registered iterator-based systems (for testing)
+    pub fn system_count(&self) -> usize {
+        self.systems.len()
+    }
+    
+    /// Get the number of registered legacy systems (for testing)
+    pub fn legacy_system_count(&self) -> usize {
+        self.legacy_systems.len()
     }
     
     /// Get a snapshot of a component for diffing (internal method)
