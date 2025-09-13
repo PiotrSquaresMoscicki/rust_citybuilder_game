@@ -1,7 +1,6 @@
-use crate::ecs::{Component, World, Mut, EntityIterator};
+use crate::ecs::{World, Mut, EntityIterator};
 use crate::examples::{Position, Velocity};
 use crate::multiple_iterators_test::{TimeDelta, Gravity};
-use std::any::Any;
 
 /// Example system that takes a single iterator as parameter
 /// This demonstrates the new tuple-based system API
