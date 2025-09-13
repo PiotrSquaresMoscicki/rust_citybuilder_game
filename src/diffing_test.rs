@@ -170,4 +170,73 @@ mod tests {
         assert_eq!(f32::type_name(), "f32");
         assert_eq!(String::type_name(), "String");
     }
+
+    #[test]
+    fn test_complete_diffing_integration() {
+        let mut world = World::new();
+        world.enable_debug_tracking();
+        world.next_frame();
+        
+        // Create entities
+        let entity1 = world.create_entity();
+        world.add_component(entity1, Position::new(10.0, 20.0));
+        world.add_component(entity1, Velocity::new(1.0, 2.0));
+        world.add_component(entity1, Health::new(100));
+        
+        let entity2 = world.create_entity();
+        world.add_component(entity2, Position::new(5.0, 15.0));
+        world.add_component(entity2, Velocity::new(-1.0, 1.0));
+        
+        // Test system with velocity changes
+        world.run_system_with_debug(
+            "test_velocity_system",
+            |world| {
+                let ent_it = world.iter_entities::<Position, Mut<Velocity>>();
+                for (_position, mut velocity) in ent_it {
+                    velocity.dx *= 2.0;
+                    velocity.dy *= 0.5;
+                }
+            },
+            &[std::any::TypeId::of::<Velocity>()]
+        );
+        
+        // Test system with health changes
+        world.run_system_with_debug(
+            "test_health_system",
+            |world| {
+                let ent_it = world.iter_entities::<Velocity, Mut<Health>>();
+                for (_velocity, mut health) in ent_it {
+                    health.damage(25);
+                }
+            },
+            &[std::any::TypeId::of::<Health>()]
+        );
+        
+        // Validate the history
+        let history = world.get_debug_history();
+        assert!(!history.is_empty());
+        
+        // Should contain both systems
+        assert!(history.contains("test_velocity_system"));
+        assert!(history.contains("test_health_system"));
+        
+        // Should show specific changes
+        assert!(history.contains("dx -> 2.0"));
+        assert!(history.contains("dy -> 1.0"));
+        assert!(history.contains("dx -> -2.0"));
+        assert!(history.contains("dy -> 0.5"));
+        assert!(history.contains("current -> 75"));
+        
+        // Validate RON serialization works
+        assert!(!world.debug_tracker.diff_history.is_empty());
+        
+        // Test frame advancement
+        world.next_frame();
+        assert_eq!(world.debug_tracker.frame_number, 2);
+        
+        // Test clear history
+        world.clear_debug_history();
+        let empty_history = world.get_debug_history();
+        assert!(empty_history.is_empty());
+    }
 }
