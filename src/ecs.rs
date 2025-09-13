@@ -278,7 +278,7 @@ impl World {
     }
     
     /// Get all entities that have all specified component types
-    fn entities_with_components(&self, type_ids: &[TypeId]) -> Vec<Entity> {
+    pub fn entities_with_components(&self, type_ids: &[TypeId]) -> Vec<Entity> {
         if type_ids.is_empty() {
             return self.entities.clone();
         }
@@ -306,6 +306,37 @@ impl World {
     /// T1 is accessed immutably, T2 is accessed mutably
     pub fn iter_entities<T1: Component + 'static, T2: Component + 'static>(&self) -> EntityIterator<T1, T2> {
         EntityIterator::new(self)
+    }
+
+    /// Create a new query-based EntityIterator that supports any number of components
+    pub fn query<Q: crate::query::Query>(&self) -> crate::query::EntityIterator<Q> {
+        crate::query::EntityIterator::new(self)
+    }
+
+    /// Check if an entity exists in the world
+    pub fn entity_exists(&self, entity: Entity) -> bool {
+        self.entities.contains(&entity)
+    }
+
+    /// Get all entities in the world
+    pub fn all_entities(&self) -> Vec<Entity> {
+        self.entities.clone()
+    }
+
+    /// Get a component reference (for new query system)
+    pub fn get_component_ref<T: Component + 'static>(&self, entity: Entity) -> Option<ComponentRef<T>> {
+        let type_id = TypeId::of::<T>();
+        let pool = self.component_pools.get(&type_id)?;
+        let component = pool.get(entity)?;
+        Some(ComponentRef::new(component))
+    }
+
+    /// Get a mutable component reference (for new query system)
+    pub fn get_component_ref_mut<T: Component + 'static>(&self, entity: Entity) -> Option<ComponentRefMut<T>> {
+        let type_id = TypeId::of::<T>();
+        let pool = self.component_pools.get(&type_id)?;
+        let component = pool.get_mut(entity)?;
+        Some(ComponentRefMut::new(component))
     }
     
     /// Add a system to the world
