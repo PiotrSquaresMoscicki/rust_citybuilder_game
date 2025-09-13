@@ -1,0 +1,4 @@
+in system function allow for obtaining multiple iterators in case when system will want to operate
+on two or more different entity types. For example a system may operate on entities with velocity
+and position components to update the position based on the velocity but it also will want to 
+access the entity responsible for storing time dlta data and gravity data. 
