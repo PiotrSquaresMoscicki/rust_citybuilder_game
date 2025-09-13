@@ -1,8 +1,10 @@
 mod ecs;
 mod examples;
 mod http_server;
+mod mut_demo;
 
 use examples::demonstrate_ecs_systems;
+use mut_demo::demonstrate_mut_requirement;
 use http_server::start_hello_world_server;
 use std::env;
 
@@ -17,6 +19,8 @@ fn main() {
             "ecs" => {
                 println!("Demonstrating the Entity Component System...\n");
                 demonstrate_ecs_systems();
+                println!("\n");
+                demonstrate_mut_requirement();
             }
             "server" => {
                 println!("Starting HTTP server...\n");

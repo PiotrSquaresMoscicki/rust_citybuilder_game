@@ -1,4 +1,4 @@
-use crate::ecs::{Component, World, EntityIterator};
+use crate::ecs::{Component, World, EntityIterator, Mut};
 use std::any::Any;
 
 /// Position component for entities
@@ -123,10 +123,10 @@ impl Component for Health {
     }
 }
 
-/// Example system function that demonstrates the requested API
-/// This matches: system_func(ent_it: EntityIterator<ComponentType1, mut ComponentType2>)
-/// where Position is immutable and Velocity is mutable
-pub fn movement_system(ent_it: EntityIterator<Position, Velocity>) {
+/// Example system function that demonstrates the required API
+/// This matches: system_func(ent_it: EntityIterator<ComponentType1, Mut<ComponentType2>>)
+/// where Position is immutable and Mut<Velocity> is mutable
+pub fn movement_system(ent_it: EntityIterator<Position, Mut<Velocity>>) {
     for (position, mut velocity) in ent_it {
         println!("Entity at ({}, {}) with velocity ({}, {})", 
                  position.x, position.y, velocity.dx, velocity.dy);
@@ -140,7 +140,7 @@ pub fn movement_system(ent_it: EntityIterator<Position, Velocity>) {
 }
 
 /// Another example system that modifies health components
-pub fn health_damage_system(ent_it: EntityIterator<Position, Health>) {
+pub fn health_damage_system(ent_it: EntityIterator<Position, Mut<Health>>) {
     for (position, mut health) in ent_it {
         // Entities take damage based on their position (example logic)
         let damage = if position.x < 0.0 || position.y < 0.0 { 5 } else { 1 };
@@ -183,11 +183,11 @@ pub fn create_example_world() -> World {
 pub fn demonstrate_ecs_systems() {
     let world = create_example_world();
     
-    println!("=== Movement System (Position immutable, Velocity mutable) ===");
-    let ent_it = world.iter_entities::<Position, Velocity>();
+    println!("=== Movement System (Position immutable, Mut<Velocity> mutable) ===");
+    let ent_it = world.iter_entities::<Position, Mut<Velocity>>();
     movement_system(ent_it);
     
-    println!("\n=== Health Damage System (Position immutable, Health mutable) ===");
-    let ent_it = world.iter_entities::<Position, Health>();
+    println!("\n=== Health Damage System (Position immutable, Mut<Health> mutable) ===");
+    let ent_it = world.iter_entities::<Position, Mut<Health>>();
     health_damage_system(ent_it);
 }
