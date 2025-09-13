@@ -2,6 +2,7 @@ use std::any::{Any, TypeId};
 use std::collections::HashMap;
 use std::marker::PhantomData;
 use std::cell::{RefCell, Ref, RefMut};
+use crate::diffing::{DebugTracker, diff_components};
 
 /// Mut<T> wrapper to explicitly mark components that should be accessed mutably
 pub struct Mut<T> {
@@ -61,6 +62,9 @@ pub trait Component: Any {
     
     /// Convert to mutable Any trait object for type erasure
     fn as_any_mut(&mut self) -> &mut dyn Any;
+    
+    /// Create a deep copy of this component for diffing purposes
+    fn clone_box(&self) -> Box<dyn Component>;
 }
 
 /// Storage for a specific component type using RefCell for interior mutability
@@ -276,6 +280,7 @@ pub struct World {
     entities: Vec<Entity>,
     component_pools: HashMap<TypeId, ComponentPool>,
     systems: Vec<Box<dyn Fn(&World)>>,
+    pub debug_tracker: DebugTracker,
 }
 
 impl World {
@@ -286,6 +291,7 @@ impl World {
             entities: Vec::new(),
             component_pools: HashMap::new(),
             systems: Vec::new(),
+            debug_tracker: DebugTracker::new(),
         }
     }
     
@@ -409,6 +415,96 @@ impl World {
     /// Run all systems
     pub fn run_systems(&self) {
         for system in &self.systems {
+            system(self);
+        }
+    }
+    
+    /// Enable debug tracking for component state changes
+    pub fn enable_debug_tracking(&mut self) {
+        self.debug_tracker.enable();
+    }
+    
+    /// Disable debug tracking
+    pub fn disable_debug_tracking(&mut self) {
+        self.debug_tracker.disable();
+    }
+    
+    /// Advance to the next frame for debug tracking
+    pub fn next_frame(&mut self) {
+        self.debug_tracker.next_frame();
+    }
+    
+    /// Get debug diff history in human-readable format
+    pub fn get_debug_history(&self) -> String {
+        self.debug_tracker.get_diff_history_formatted()
+    }
+    
+    /// Clear debug history
+    pub fn clear_debug_history(&mut self) {
+        self.debug_tracker.clear_history();
+    }
+    
+    /// Get a snapshot of a component for diffing (internal method)
+    pub(crate) fn get_component_snapshot(&self, entity: Entity, type_id: TypeId) -> Option<Box<dyn Component>> {
+        let pool = self.component_pools.get(&type_id)?;
+        let component = pool.get(entity)?;
+        Some(component.clone_box())
+    }
+    
+    /// Run a single system with debug tracking
+    pub fn run_system_with_debug<F>(&mut self, system_name: &str, system: F, mutable_types: &[TypeId]) 
+    where 
+        F: Fn(&World)
+    {
+        if self.debug_tracker.enabled {
+            // Get all entities that have any of the mutable component types
+            let mut tracked_entities = std::collections::HashSet::new();
+            for &type_id in mutable_types {
+                for entity in self.component_pools.get(&type_id).map_or(vec![], |pool| pool.entities().collect()) {
+                    tracked_entities.insert(entity);
+                }
+            }
+            let entities: Vec<Entity> = tracked_entities.into_iter().collect();
+            
+            // Take snapshot before system execution
+            let mut snapshots = HashMap::new();
+            for &entity in &entities {
+                for &type_id in mutable_types {
+                    if let Some(component) = self.get_component_snapshot(entity, type_id) {
+                        snapshots.insert((entity, type_id), component);
+                    }
+                }
+            }
+            
+            // Run the system
+            system(self);
+            
+            // Record diffs after system execution
+            let mut component_diffs = Vec::new();
+            for &entity in &entities {
+                for &type_id in mutable_types {
+                    if let Some(old_component) = snapshots.get(&(entity, type_id)) {
+                        if let Some(new_component) = self.get_component_snapshot(entity, type_id) {
+                            // Use diffable trait to get actual differences
+                            if let Some(mut diff) = diff_components(old_component.as_ref(), new_component.as_ref(), type_id) {
+                                diff.entity_id = entity;
+                                component_diffs.push(diff);
+                            }
+                        }
+                    }
+                }
+            }
+            
+            if !component_diffs.is_empty() {
+                let record = crate::diffing::SystemDiffRecord {
+                    frame_number: self.debug_tracker.frame_number,
+                    system_name: system_name.to_string(),
+                    component_diffs,
+                };
+                self.debug_tracker.diff_history.push(record);
+            }
+        } else {
+            // Just run the system without tracking
             system(self);
         }
     }
