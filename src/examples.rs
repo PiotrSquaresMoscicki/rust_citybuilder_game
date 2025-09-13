@@ -35,6 +35,10 @@ impl Component for Position {
     fn as_any_mut(&mut self) -> &mut dyn Any {
         self
     }
+    
+    fn clone_box(&self) -> Box<dyn Component> {
+        Box::new(self.clone())
+    }
 }
 
 /// Velocity component for entities
@@ -70,6 +74,10 @@ impl Component for Velocity {
     
     fn as_any_mut(&mut self) -> &mut dyn Any {
         self
+    }
+    
+    fn clone_box(&self) -> Box<dyn Component> {
+        Box::new(self.clone())
     }
 }
 
@@ -120,6 +128,10 @@ impl Component for Health {
     
     fn as_any_mut(&mut self) -> &mut dyn Any {
         self
+    }
+    
+    fn clone_box(&self) -> Box<dyn Component> {
+        Box::new(self.clone())
     }
 }
 
@@ -178,6 +190,15 @@ pub fn create_example_world() -> World {
     
     world
 }
+
+// Make Position diffable
+crate::diffable!(Position { x, y });
+
+// Make Velocity diffable  
+crate::diffable!(Velocity { dx, dy });
+
+// Make Health diffable
+crate::diffable!(Health { current, max });
 
 /// Demonstrate the system registration and execution pattern
 pub fn demonstrate_ecs_systems() {

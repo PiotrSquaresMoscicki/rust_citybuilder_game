@@ -2,9 +2,15 @@ mod ecs;
 mod examples;
 mod http_server;
 mod mut_demo;
+mod diffing;
+mod diffing_demo;
+
+#[cfg(test)]
+mod diffing_test;
 
 use examples::demonstrate_ecs_systems;
 use mut_demo::demonstrate_mut_requirement;
+use diffing_demo::demonstrate_diffing_system;
 use http_server::start_hello_world_server;
 use std::env;
 
@@ -21,6 +27,10 @@ fn main() {
                 demonstrate_ecs_systems();
                 println!("\n");
                 demonstrate_mut_requirement();
+            }
+            "diff" => {
+                println!("Demonstrating the ECS Diffing System...\n");
+                demonstrate_diffing_system();
             }
             "server" => {
                 println!("Starting HTTP server...\n");
@@ -60,6 +70,7 @@ fn print_help() {
     println!("COMMANDS:");
     println!("    server [ADDRESS]    Start HTTP server (default: localhost:8080)");
     println!("    ecs                 Demonstrate Entity Component System");
+    println!("    diff                Demonstrate ECS Diffing System");
     println!("    help                Show this help message");
     println!("");
     println!("EXAMPLES:");
@@ -67,6 +78,7 @@ fn print_help() {
     println!("    cargo run server             # Start HTTP server on localhost:8080");
     println!("    cargo run server 0.0.0.0:3000  # Start HTTP server on all interfaces, port 3000");
     println!("    cargo run ecs                # Run ECS demonstration");
+    println!("    cargo run diff               # Run ECS diffing demonstration");
     println!("");
 }
 
