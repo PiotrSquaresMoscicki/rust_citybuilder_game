@@ -274,12 +274,58 @@ impl<T> std::ops::DerefMut for ComponentRefMut<T> {
     }
 }
 
+/// Trait for systems that accept tuples of entity iterators
+/// This allows the World to know which components are used by which system
+pub trait SystemWithIterators<Iters> {
+    fn run(&self, iterators: Iters);
+}
+
+/// Trait to create iterators from a World reference
+pub trait CreateIterators<Iters> {
+    fn create_iterators(world: &World) -> Iters;
+}
+
+// Implementation for single iterator
+impl<A1, A2> CreateIterators<EntityIterator<A1, A2>> for EntityIterator<A1, A2>
+where
+    A1: AccessMode + AccessModeToRef<A1::Component>,
+    A2: AccessMode + AccessModeToRef<A2::Component>,
+{
+    fn create_iterators(world: &World) -> EntityIterator<A1, A2> {
+        world.iter_entities::<A1, A2>()
+    }
+}
+
+// Implementation for tuple of two iterators
+impl<I1, I2> CreateIterators<(I1, I2)> for (I1, I2)
+where
+    I1: CreateIterators<I1>,
+    I2: CreateIterators<I2>,
+{
+    fn create_iterators(world: &World) -> (I1, I2) {
+        (I1::create_iterators(world), I2::create_iterators(world))
+    }
+}
+
+// Implementation for tuple of three iterators
+impl<I1, I2, I3> CreateIterators<(I1, I2, I3)> for (I1, I2, I3)
+where
+    I1: CreateIterators<I1>,
+    I2: CreateIterators<I2>,
+    I3: CreateIterators<I3>,
+{
+    fn create_iterators(world: &World) -> (I1, I2, I3) {
+        (I1::create_iterators(world), I2::create_iterators(world), I3::create_iterators(world))
+    }
+}
+
 /// World manages entities, component pools, and systems
 pub struct World {
     next_entity_id: Entity,
     entities: Vec<Entity>,
     component_pools: HashMap<TypeId, ComponentPool>,
     systems: Vec<Box<dyn Fn(&World)>>,
+    tuple_systems: Vec<Box<dyn for<'a> Fn(&'a World)>>,
     pub debug_tracker: DebugTracker,
 }
 
@@ -291,6 +337,7 @@ impl World {
             entities: Vec::new(),
             component_pools: HashMap::new(),
             systems: Vec::new(),
+            tuple_systems: Vec::new(),
             debug_tracker: DebugTracker::new(),
         }
     }
@@ -412,9 +459,33 @@ impl World {
         self.systems.push(Box::new(system));
     }
     
-    /// Run all systems
+    /// Add a system that uses tuple-based iterators
+    /// This allows the World to know which components are used by which system
+    pub fn add_tuple_system<F, Iters>(&mut self, system: F)
+    where
+        F: Fn(Iters) + 'static,
+        Iters: CreateIterators<Iters> + 'static,
+    {
+        let wrapped_system = move |world: &World| {
+            let iterators = Iters::create_iterators(world);
+            system(iterators);
+        };
+        self.tuple_systems.push(Box::new(wrapped_system));
+    }
+    
+    /// Run all systems (both traditional and tuple-based)
     pub fn run_systems(&self) {
         for system in &self.systems {
+            system(self);
+        }
+        for system in &self.tuple_systems {
+            system(self);
+        }
+    }
+    
+    /// Run all tuple-based systems only
+    pub fn run_tuple_systems(&self) {
+        for system in &self.tuple_systems {
             system(self);
         }
     }
