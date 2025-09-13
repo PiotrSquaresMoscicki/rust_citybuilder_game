@@ -5,6 +5,7 @@ mod mut_demo;
 mod diffing;
 mod diffing_demo;
 mod multiple_iterators_test;
+mod multiple_iterator_systems_test;
 
 #[cfg(test)]
 mod diffing_test;
@@ -13,6 +14,7 @@ use examples::demonstrate_ecs_systems;
 use mut_demo::demonstrate_mut_requirement;
 use diffing_demo::demonstrate_diffing_system;
 use multiple_iterators_test::demonstrate_multiple_iterators;
+use multiple_iterator_systems_test::demonstrate_multiple_iterator_systems;
 use http_server::start_hello_world_server;
 use std::env;
 
@@ -35,6 +37,10 @@ fn main() {
             "multi" => {
                 println!("Demonstrating Multiple Iterators in Systems...\n");
                 demonstrate_multiple_iterators();
+            }
+            "multi-systems" => {
+                println!("Demonstrating Multiple Iterator Systems...\n");
+                demonstrate_multiple_iterator_systems();
             }
             "diff" => {
                 println!("Demonstrating the ECS Diffing System...\n");
@@ -79,6 +85,7 @@ fn print_help() {
     println!("    server [ADDRESS]    Start HTTP server (default: localhost:8080)");
     println!("    ecs                 Demonstrate Entity Component System");
     println!("    multi               Demonstrate Multiple Iterators in Systems");
+    println!("    multi-systems       Demonstrate Multiple Iterator Systems (new API)");
     println!("    diff                Demonstrate ECS Diffing System");
     println!("    help                Show this help message");
     println!("");
