@@ -59,9 +59,19 @@ for (pos, mut vel, mut health) in iter {
 ```
 
 ### Higher Arities
-The system supports up to 32 components in a single query (extendable to 64):
+The system supports up to 64 components in a single query:
 ```rust
 let iter: EntityIterator<(C1, C2, C3, C4, C5, C6, C7, C8)> = world.query();
+```
+
+For extreme cases with many components:
+```rust
+// Example with 10 components
+let iter: EntityIterator<(
+    Position, Mut<Velocity>, Health, Mut<Energy>, 
+    Armor, Mut<Experience>, Level, Mut<Inventory>,
+    Skills, Mut<Stats>
+)> = world.query();
 ```
 
 ## System Functions
@@ -131,9 +141,10 @@ The system prevents:
 
 ## Limitations
 
-1. **Maximum arity**: Currently supports up to 32 components (extendable to 64)
+1. **Maximum arity**: Supports up to 64 components per query
 2. **No nested queries**: Complex query compositions require separate iterations
 3. **Static typing**: All component types must be known at compile time
+4. **Compilation time**: Large tuple implementations may increase compile times
 
 ## Migration Guide
 
