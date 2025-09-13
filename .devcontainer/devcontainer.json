@@ -1,10 +1,18 @@
 {
-    "settings": {
-        "rust-analyzer.cargo.useRustcWrapperForBuild": true,
-        "rust-analyzer.checkOnSave.command": "clippy"
+    "build": {
+        "dockerfile": "Dockerfile"
+        // Add your build configuration here if needed
     },
-    "extensions": [
-        "rust-lang.rust-analyzer"
-    ],
+    "customizations": {
+        "vscode": {
+            "settings": {
+                "rust-analyzer.cargo.useRustcWrapperForBuild": true,
+                "rust-analyzer.checkOnSave.command": "clippy"
+            },
+            "extensions": [
+                "rust-lang.rust-analyzer"
+            ]
+        }
+    },
     "postCreateCommand": "rustup update && rustup component add clippy rustfmt"
 }
