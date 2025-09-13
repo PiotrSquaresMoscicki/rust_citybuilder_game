@@ -6,6 +6,8 @@ mod diffing;
 mod diffing_demo;
 mod multiple_iterators_test;
 mod multiple_iterator_systems_test;
+mod core;
+mod math_demo;
 
 #[cfg(test)]
 mod diffing_test;
@@ -15,6 +17,7 @@ use mut_demo::demonstrate_mut_requirement;
 use diffing_demo::demonstrate_diffing_system;
 use multiple_iterators_test::demonstrate_multiple_iterators;
 use multiple_iterator_systems_test::demonstrate_multiple_iterator_systems;
+use math_demo::demonstrate_math_library;
 use http_server::start_hello_world_server;
 use std::env;
 
@@ -45,6 +48,10 @@ fn main() {
             "diff" => {
                 println!("Demonstrating the ECS Diffing System...\n");
                 demonstrate_diffing_system();
+            }
+            "math" => {
+                println!("Demonstrating the Math Library...\n");
+                demonstrate_math_library();
             }
             "server" => {
                 println!("Starting HTTP server...\n");
@@ -87,6 +94,7 @@ fn print_help() {
     println!("    multi               Demonstrate Multiple Iterators in Systems");
     println!("    multi-systems       Demonstrate Multiple Iterator Systems (new API)");
     println!("    diff                Demonstrate ECS Diffing System");
+    println!("    math                Demonstrate Math Library (Vector2d, Angle2d, Transform2d)");
     println!("    help                Show this help message");
     println!("");
     println!("EXAMPLES:");
@@ -96,6 +104,7 @@ fn print_help() {
     println!("    cargo run ecs                # Run ECS demonstration");
     println!("    cargo run multi              # Run multiple iterators demonstration");
     println!("    cargo run diff               # Run ECS diffing demonstration");
+    println!("    cargo run math               # Run math library demonstration");
     println!("");
 }
 
