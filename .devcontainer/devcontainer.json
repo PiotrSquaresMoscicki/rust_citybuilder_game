@@ -1,0 +1,10 @@
+{
+    "settings": {
+        "rust-analyzer.cargo.useRustcWrapperForBuild": true,
+        "rust-analyzer.checkOnSave.command": "clippy"
+    },
+    "extensions": [
+        "rust-lang.rust-analyzer"
+    ],
+    "postCreateCommand": "rustup update && rustup component add clippy rustfmt"
+}
