@@ -7,6 +7,7 @@
         "vscode": {
             "settings": {
                 "rust-analyzer.cargo.useRustcWrapperForBuild": true,
+                "rust-analyzer.checkOnSave": true,
                 "rust-analyzer.checkOnSave.command": "clippy"
             },
             "extensions": [
