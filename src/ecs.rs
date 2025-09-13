@@ -3,6 +3,49 @@ use std::collections::HashMap;
 use std::marker::PhantomData;
 use std::cell::{RefCell, Ref, RefMut};
 
+/// Mut<T> wrapper to explicitly mark components that should be accessed mutably
+pub struct Mut<T> {
+    _phantom: PhantomData<T>,
+}
+
+impl<T> Mut<T> {
+    /// Extract the inner type from Mut<T>
+    pub fn inner_type() -> PhantomData<T> {
+        PhantomData
+    }
+}
+
+/// Trait to determine if a type represents mutable access
+pub trait AccessMode {
+    type Component: Component + 'static;
+    
+    /// Returns true if this access mode requires mutable access
+    fn is_mutable() -> bool;
+    
+    /// Get the TypeId of the underlying component
+    fn component_type_id() -> TypeId {
+        TypeId::of::<Self::Component>()
+    }
+}
+
+/// Implementation for immutable access (plain component types)
+impl<T: Component + 'static> AccessMode for T {
+    type Component = T;
+    
+    fn is_mutable() -> bool {
+        false
+    }
+}
+
+/// Implementation for mutable access (Mut<T> wrapper)
+impl<T: Component + 'static> AccessMode for Mut<T> {
+    type Component = T;
+    
+    fn is_mutable() -> bool {
+        true
+    }
+}
+
 /// Entity is just a unique identifier
 pub type Entity = u32;
 
@@ -57,23 +100,24 @@ impl ComponentPool {
     }
 }
 
-/// EntityIterator for entities with two component types (immutable first, mutable second)
-/// This implements the API: EntityIterator<ComponentType1, mut ComponentType2>
-pub struct EntityIterator<T1, T2> {
+/// EntityIterator for entities with two component types
+/// This implements the API: EntityIterator<ComponentType1, Mut<ComponentType2>>
+/// where ComponentType1 is accessed immutably and Mut<ComponentType2> is accessed mutably
+pub struct EntityIterator<A1, A2> {
     world: *const World,
     entities: Vec<Entity>,
     index: usize,
-    _phantom: PhantomData<(T1, T2)>,
+    _phantom: PhantomData<(A1, A2)>,
 }
 
-impl<T1, T2> EntityIterator<T1, T2>
+impl<A1, A2> EntityIterator<A1, A2>
 where
-    T1: Component + 'static,
-    T2: Component + 'static,
+    A1: AccessMode,
+    A2: AccessMode,
 {
-    /// Create a new iterator for entities with components T1 (immutable) and T2 (mutable)
+    /// Create a new iterator for entities with components A1 and A2
     pub fn new(world: &World) -> Self {
-        let type_ids = vec![TypeId::of::<T1>(), TypeId::of::<T2>()];
+        let type_ids = vec![A1::component_type_id(), A2::component_type_id()];
         let entities = world.entities_with_components(&type_ids);
         Self {
             world: world as *const World,
@@ -84,12 +128,37 @@ where
     }
 }
 
-impl<T1, T2> Iterator for EntityIterator<T1, T2>
+/// Trait to map access modes to their corresponding reference types
+pub trait AccessModeToRef<T: Component + 'static> {
+    type Ref: std::ops::Deref<Target = T>;
+    
+    fn get_from_pool(pool: &ComponentPool, entity: Entity) -> Option<Self::Ref>;
+}
+
+/// Immutable access maps to ComponentRef
+impl<T: Component + 'static> AccessModeToRef<T> for T {
+    type Ref = ComponentRef<T>;
+    
+    fn get_from_pool(pool: &ComponentPool, entity: Entity) -> Option<Self::Ref> {
+        ComponentRef::from_pool(pool, entity)
+    }
+}
+
+/// Mutable access maps to ComponentRefMut
+impl<T: Component + 'static> AccessModeToRef<T> for Mut<T> {
+    type Ref = ComponentRefMut<T>;
+    
+    fn get_from_pool(pool: &ComponentPool, entity: Entity) -> Option<Self::Ref> {
+        ComponentRefMut::from_pool(pool, entity)
+    }
+}
+
+impl<A1, A2> Iterator for EntityIterator<A1, A2>
 where
-    T1: Component + 'static,
-    T2: Component + 'static,
+    A1: AccessMode + AccessModeToRef<A1::Component>,
+    A2: AccessMode + AccessModeToRef<A2::Component>,
 {
-    type Item = (ComponentRef<T1>, ComponentRefMut<T2>);
+    type Item = (A1::Ref, A2::Ref);
 
     fn next(&mut self) -> Option<Self::Item> {
         while self.index < self.entities.len() {
@@ -99,20 +168,18 @@ where
             // Safety: We ensure the world pointer is valid during iterator lifetime
             let world = unsafe { &*self.world };
             
-            let type_id1 = TypeId::of::<T1>();
-            let type_id2 = TypeId::of::<T2>();
+            let type_id1 = A1::component_type_id();
+            let type_id2 = A2::component_type_id();
             
             if let (Some(pool1), Some(pool2)) = (
                 world.component_pools.get(&type_id1),
                 world.component_pools.get(&type_id2),
             ) {
                 if let (Some(comp1), Some(comp2)) = (
-                    pool1.get(entity),
-                    pool2.get_mut(entity),
+                    A1::get_from_pool(pool1, entity),
+                    A2::get_from_pool(pool2, entity),
                 ) {
-                    let comp1_ref = ComponentRef::new(comp1);
-                    let comp2_ref = ComponentRefMut::new(comp2);
-                    return Some((comp1_ref, comp2_ref));
+                    return Some((comp1, comp2));
                 }
             }
         }
@@ -120,7 +187,14 @@ where
     }
 }
 
-/// Wrapper for immutable component reference
+/// Trait for component references that can be either mutable or immutable
+pub trait ComponentAccess<T: Component + 'static> {
+    fn from_pool(pool: &ComponentPool, entity: Entity) -> Option<Self>
+    where
+        Self: Sized;
+}
+
+/// Immutable component reference
 pub struct ComponentRef<T> {
     _component: Ref<'static, Box<dyn Component>>,
     component_ref: *const T,
@@ -141,6 +215,12 @@ impl<T: Component + 'static> ComponentRef<T> {
     }
 }
 
+impl<T: Component + 'static> ComponentAccess<T> for ComponentRef<T> {
+    fn from_pool(pool: &ComponentPool, entity: Entity) -> Option<Self> {
+        pool.get(entity).map(ComponentRef::new)
+    }
+}
+
 impl<T> std::ops::Deref for ComponentRef<T> {
     type Target = T;
     
@@ -149,7 +229,7 @@ impl<T> std::ops::Deref for ComponentRef<T> {
     }
 }
 
-/// Wrapper for mutable component reference
+/// Mutable component reference
 pub struct ComponentRefMut<T> {
     _component: RefMut<'static, Box<dyn Component>>,
     component_ref: *mut T,
@@ -167,6 +247,12 @@ impl<T: Component + 'static> ComponentRefMut<T> {
             _component: component_static,
             component_ref: component_ptr,
         }
+    }
+}
+
+impl<T: Component + 'static> ComponentAccess<T> for ComponentRefMut<T> {
+    fn from_pool(pool: &ComponentPool, entity: Entity) -> Option<Self> {
+        pool.get_mut(entity).map(ComponentRefMut::new)
     }
 }
 
@@ -302,9 +388,13 @@ impl World {
         entities
     }
     
-    /// Create an EntityIterator with the API: EntityIterator<ComponentType1, mut ComponentType2>
-    /// T1 is accessed immutably, T2 is accessed mutably
-    pub fn iter_entities<T1: Component + 'static, T2: Component + 'static>(&self) -> EntityIterator<T1, T2> {
+    /// Create an EntityIterator with the API: EntityIterator<ComponentType1, Mut<ComponentType2>>
+    /// Plain types (T) are accessed immutably, Mut<T> types are accessed mutably
+    pub fn iter_entities<A1, A2>(&self) -> EntityIterator<A1, A2>
+    where
+        A1: AccessMode + AccessModeToRef<A1::Component>,
+        A2: AccessMode + AccessModeToRef<A2::Component>,
+    {
         EntityIterator::new(self)
     }
     

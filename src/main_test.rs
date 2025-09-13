@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod tests {
-    use crate::ecs::{World, Component};
+    use crate::ecs::{World, Component, Mut};
     use crate::examples::{Position, Velocity, Health};
 
     #[test]
@@ -73,9 +73,9 @@ mod tests {
         world.add_component(entity3, Position::new(5.0, 6.0));
         // No velocity for entity3
         
-        // Test the EntityIterator API
+        // Test the EntityIterator API with Mut<Velocity> for mutable access
         let mut count = 0;
-        let ent_it = world.iter_entities::<Position, Velocity>();
+        let ent_it = world.iter_entities::<Position, Mut<Velocity>>();
         for (position, mut velocity) in ent_it {
             count += 1;
             // Should only iterate over entities that have both components
@@ -94,6 +94,52 @@ mod tests {
         let velocity1 = world.get_component::<Velocity>(entity1).unwrap();
         assert!((velocity1.dx - 1.1).abs() < f32::EPSILON);
         assert!((velocity1.dy - 1.2).abs() < f32::EPSILON);
+    }
+
+    #[test] 
+    fn test_immutable_only_iterator() {
+        let mut world = World::new();
+        
+        let entity1 = world.create_entity();
+        world.add_component(entity1, Position::new(1.0, 2.0));
+        world.add_component(entity1, Velocity::new(0.1, 0.2));
+        
+        // Test iteration with both components immutable
+        let ent_it = world.iter_entities::<Position, Velocity>();
+        for (position, velocity) in ent_it {
+            // We can read from both components
+            assert!(position.x > 0.0);
+            assert!(velocity.dx > 0.0);
+            
+            // But we cannot modify velocity because it's not Mut<Velocity>
+            // This would cause a compilation error:
+            // velocity.dx += 1.0; // <- This would fail to compile
+        }
+    }
+
+    #[test]
+    fn test_mixed_mutability() {
+        let mut world = World::new();
+        
+        let entity1 = world.create_entity();
+        world.add_component(entity1, Position::new(1.0, 2.0));
+        world.add_component(entity1, Velocity::new(0.1, 0.2));
+        
+        // Test iteration with Position immutable and Velocity mutable
+        let ent_it = world.iter_entities::<Position, Mut<Velocity>>();
+        for (position, mut velocity) in ent_it {
+            // Can read from position (immutable)
+            assert!(position.x > 0.0);
+            
+            // Can modify velocity (mutable)
+            velocity.dx = 99.0;
+            velocity.dy = 88.0;
+        }
+        
+        // Verify the changes
+        let velocity = world.get_component::<Velocity>(entity1).unwrap();
+        assert_eq!(velocity.dx, 99.0);
+        assert_eq!(velocity.dy, 88.0);
     }
 
     #[test]
