@@ -3,6 +3,7 @@ pub mod examples;
 pub mod diffing;
 pub mod core;
 pub mod rendering;
+pub mod web_render_sample;
 
 #[cfg(test)]
 mod main_test;

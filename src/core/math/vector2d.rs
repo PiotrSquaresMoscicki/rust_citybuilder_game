@@ -1,4 +1,4 @@
-use std::ops::{Add, Sub, Mul, Div};
+use std::ops::{Add, Sub, Mul, Div, Neg};
 
 /// A 2D vector with basic mathematical operations
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -115,6 +115,14 @@ impl Div<f32> for Vector2d {
 
     fn div(self, rhs: f32) -> Self::Output {
         Self::new(self.x / rhs, self.y / rhs)
+    }
+}
+
+impl Neg for Vector2d {
+    type Output = Self;
+
+    fn neg(self) -> Self::Output {
+        Self::new(-self.x, -self.y)
     }
 }
 
