@@ -1,5 +1,5 @@
 use crate::ecs_new::*;
-use std::any::{Any, TypeId};
+use std::any::Any;
 
 // Example components for demonstration
 #[derive(Clone, Debug)]
@@ -148,18 +148,25 @@ impl System for SampleSystem {
         let (position_velocity_iter, time_physics_input_iter) = iterators;
         
         // Implementation of the update logic
-        // This would iterate over entities and update their components
         println!("SampleSystem::update called with multiple iterators");
         
-        // Example iteration (simplified since we're using placeholder iterators)
-        // for (mut position, velocity) in position_velocity_iter {
-        //     position.x += velocity.dx;
-        //     position.y += velocity.dy;
-        // }
+        // Since iterators return Entity IDs, we need access to the world to get components
+        // This is a limitation of the current simplified design
+        // In the complete implementation, iterators would return component references directly
         
-        // for (time, physics, input) in time_physics_input_iter {
-        //     // Update based on time, physics, and input
-        // }
+        // Count entities with position and velocity
+        let mut position_velocity_count = 0;
+        for _entity in position_velocity_iter {
+            position_velocity_count += 1;
+        }
+        println!("Found {} entities with Position and Velocity components", position_velocity_count);
+        
+        // Count entities with time, physics, and input
+        let mut time_physics_input_count = 0;
+        for _entity in time_physics_input_iter {
+            time_physics_input_count += 1;
+        }
+        println!("Found {} entities with Time, Physics, and Input components", time_physics_input_count);
     }
 }
 

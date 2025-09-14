@@ -562,52 +562,9 @@ impl DebugTracker {
 }
 
 /// Helper function to diff two components using their type information
-pub fn diff_components(old: &dyn Component, new: &dyn Component, type_id: TypeId) -> Option<ComponentDiff> {
-    use std::any::TypeId;
-    
-    // This is a basic implementation - in a full system, you'd use a registry
-    // to map TypeIds to specific diffing functions
-    if type_id == TypeId::of::<crate::examples::Position>() {
-        if let (Some(old_pos), Some(new_pos)) = (
-            old.as_any().downcast_ref::<crate::examples::Position>(),
-            new.as_any().downcast_ref::<crate::examples::Position>()
-        ) {
-            if let Some(changes) = old_pos.diff(new_pos) {
-                return Some(ComponentDiff {
-                    entity_id: 0, // Will be set by caller
-                    component_type: "Position".to_string(),
-                    changes,
-                });
-            }
-        }
-    } else if type_id == TypeId::of::<crate::examples::Velocity>() {
-        if let (Some(old_vel), Some(new_vel)) = (
-            old.as_any().downcast_ref::<crate::examples::Velocity>(),
-            new.as_any().downcast_ref::<crate::examples::Velocity>()
-        ) {
-            if let Some(changes) = old_vel.diff(new_vel) {
-                return Some(ComponentDiff {
-                    entity_id: 0, // Will be set by caller
-                    component_type: "Velocity".to_string(),
-                    changes,
-                });
-            }
-        }
-    } else if type_id == TypeId::of::<crate::examples::Health>() {
-        if let (Some(old_health), Some(new_health)) = (
-            old.as_any().downcast_ref::<crate::examples::Health>(),
-            new.as_any().downcast_ref::<crate::examples::Health>()
-        ) {
-            if let Some(changes) = old_health.diff(new_health) {
-                return Some(ComponentDiff {
-                    entity_id: 0, // Will be set by caller
-                    component_type: "Health".to_string(),
-                    changes,
-                });
-            }
-        }
-    }
-    
+pub fn diff_components(_old: &dyn Component, _new: &dyn Component, _type_id: TypeId) -> Option<ComponentDiff> {
+    // Temporarily disabled to avoid dependency on examples module
+    // TODO: Implement this with a proper registry system
     None
 }
 

@@ -205,7 +205,8 @@ pub fn update_global_time_manager() {
 }
 
 // Make TimeComponent diffable
-crate::diffable!(TimeComponent { delta_time, total_time, frame_count, time_scale, is_paused });
+// Temporarily disabled diffable macro
+// crate::diffable!(TimeComponent { delta_time, total_time, frame_count, time_scale, is_paused });
 
 #[cfg(test)]
 mod tests {

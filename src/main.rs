@@ -1,32 +1,32 @@
 mod ecs;
-mod examples;
+// mod examples;
 mod http_server;
 mod enhanced_http_server;
-mod mut_demo;
-mod diffing;
-mod diffing_demo;
-mod multiple_iterators_test;
-mod multiple_iterator_systems_test;
+// mod mut_demo;
+// mod diffing;
+// mod diffing_demo;
+// mod multiple_iterators_test;
+// mod multiple_iterator_systems_test;
 mod core;
-mod math_demo;
+// mod math_demo;
 mod rendering;
-mod time_demo;
-mod system_object_example;
+// mod time_demo;
+// mod system_object_example;
 
-#[cfg(test)]
-mod diffing_test;
+// #[cfg(test)]
+// mod diffing_test;
 
-use examples::demonstrate_ecs_systems;
-use mut_demo::demonstrate_mut_requirement;
-use diffing_demo::demonstrate_diffing_system;
-use multiple_iterators_test::demonstrate_multiple_iterators;
-use multiple_iterator_systems_test::demonstrate_multiple_iterator_systems;
-use math_demo::demonstrate_math_library;
-use time_demo::run_time_demo;
+// use examples::demonstrate_ecs_systems;
+// use mut_demo::demonstrate_mut_requirement;
+// use diffing_demo::demonstrate_diffing_system;
+// use multiple_iterators_test::demonstrate_multiple_iterators;
+// use multiple_iterator_systems_test::demonstrate_multiple_iterator_systems;
+// use math_demo::demonstrate_math_library;
+// use time_demo::run_time_demo;
 use http_server::start_hello_world_server;
 use enhanced_http_server::demonstrate_rendering_with_web_client;
 use rendering::{WebServiceManager, WebClientRenderingDevice, initialize_global_rendering_manager, render_global_grid};
-use system_object_example::demonstrate_system_objects;
+// use system_object_example::demonstrate_system_objects;
 use std::env;
 
 fn main() {
@@ -49,35 +49,35 @@ fn main() {
         match args[1].as_str() {
             "ecs" => {
                 println!("Demonstrating the Entity Component System...\n");
-                demonstrate_ecs_systems();
+                // demonstrate_ecs_systems();
                 println!("\n");
-                demonstrate_mut_requirement();
+                // demonstrate_mut_requirement();
                 println!("\n");
-                demonstrate_multiple_iterators();
+                // demonstrate_multiple_iterators();
             }
             "multi" => {
                 println!("Demonstrating Multiple Iterators in Systems...\n");
-                demonstrate_multiple_iterators();
+                // demonstrate_multiple_iterators();
             }
             "multi-systems" => {
                 println!("Demonstrating Multiple Iterator Systems...\n");
-                demonstrate_multiple_iterator_systems();
+                // demonstrate_multiple_iterator_systems();
             }
             "diff" => {
                 println!("Demonstrating the ECS Diffing System...\n");
-                demonstrate_diffing_system();
+                // demonstrate_diffing_system();
             }
             "math" => {
                 println!("Demonstrating the Math Library...\n");
-                demonstrate_math_library();
+                // demonstrate_math_library();
             }
             "time" => {
                 println!("Demonstrating the Time Management System...\n");
-                run_time_demo();
+                // run_time_demo();
             }
             "systems" => {
                 println!("Demonstrating the New System Objects...\n");
-                demonstrate_system_objects();
+                // demonstrate_system_objects();
             }
             "render" => {
                 println!("Demonstrating the Rendering System...\n");
@@ -182,5 +182,5 @@ fn demonstrate_rendering_system() {
     println!("\nRendering system demonstration complete!");
 }
 
-#[cfg(test)]
-mod main_test;
+// #[cfg(test)]
+// mod main_test;

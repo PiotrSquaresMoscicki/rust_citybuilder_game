@@ -157,18 +157,6 @@ pub trait EntIt {
     fn next(&mut self) -> Option<Self::Item>;
 }
 
-/// Component reference wrapper for immutable access
-pub struct ComponentRef<T> {
-    _ref: Ref<'static, Box<dyn Component>>,
-    _phantom: PhantomData<T>,
-}
-
-/// Component reference wrapper for mutable access
-pub struct ComponentRefMut<T> {
-    _ref: RefMut<'static, Box<dyn Component>>,
-    _phantom: PhantomData<T>,
-}
-
 /// Entity iterator for 1 component
 pub struct EntIt1<A1> {
     world: *const World,
@@ -352,16 +340,17 @@ impl World {
     }
 }
 
-// Basic implementations for the iterators would go here
-// These are simplified placeholder implementations
+// Basic implementations for the iterators - simplified for now
+// These return entity IDs and components can be accessed via world reference
 
 impl<A1: AccessMode> Iterator for EntIt1<A1> {
-    type Item = (); // Placeholder - would return actual component references
+    type Item = Entity; // Return entity ID for now - user can access components via world
     
     fn next(&mut self) -> Option<Self::Item> {
         if self.index < self.entities.len() {
+            let entity = self.entities[self.index];
             self.index += 1;
-            Some(())
+            Some(entity)
         } else {
             None
         }
@@ -369,12 +358,13 @@ impl<A1: AccessMode> Iterator for EntIt1<A1> {
 }
 
 impl<A1: AccessMode, A2: AccessMode> Iterator for EntIt2<A1, A2> {
-    type Item = (); // Placeholder - would return actual component references
+    type Item = Entity; // Return entity ID for now - user can access components via world
     
     fn next(&mut self) -> Option<Self::Item> {
         if self.index < self.entities.len() {
+            let entity = self.entities[self.index];
             self.index += 1;
-            Some(())
+            Some(entity)
         } else {
             None
         }
@@ -382,12 +372,13 @@ impl<A1: AccessMode, A2: AccessMode> Iterator for EntIt2<A1, A2> {
 }
 
 impl<A1: AccessMode, A2: AccessMode, A3: AccessMode> Iterator for EntIt3<A1, A2, A3> {
-    type Item = (); // Placeholder - would return actual component references
+    type Item = Entity; // Return entity ID for now - user can access components via world
     
     fn next(&mut self) -> Option<Self::Item> {
         if self.index < self.entities.len() {
+            let entity = self.entities[self.index];
             self.index += 1;
-            Some(())
+            Some(entity)
         } else {
             None
         }
