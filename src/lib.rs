@@ -12,6 +12,11 @@ pub mod input;
 // pub mod time_demo;
 // pub mod dependency_example;
 // pub mod system_object_example;
+pub mod game_components;
+pub mod player_movement_system;
+pub mod game_renderer;
+pub mod grid_game;
+pub mod web_grid_game;
 
 // #[cfg(test)]
 // mod main_test;
