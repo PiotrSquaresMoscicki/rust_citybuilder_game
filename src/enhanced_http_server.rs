@@ -6,24 +6,17 @@ use std::time::Duration;
 pub fn start_rendering_server(address: &str) -> Result<(), Box<dyn std::error::Error>> {
     println!("🎮 Starting Rust City Builder with Rendering Server");
     
-    // Initialize the global rendering manager
-    let web_service = WebServiceManager::new(address);
-    let page_content = web_service.create_client_page(); // Get page before moving
+    // Create a web service just for serving the page (separate from global rendering)
+    let web_service_for_page = WebServiceManager::new(address);
+    let page_content = web_service_for_page.create_client_page();
     
-    let device = Box::new(WebClientRenderingDevice::new(web_service));
-    
-    if let Err(e) = initialize_global_rendering_manager(device) {
-        eprintln!("Failed to initialize rendering manager: {}", e);
-        return Err(e);
-    }
-    
-    println!("✅ Rendering manager initialized");
+    println!("✅ Using existing global rendering manager");
     
     // Wait a moment for initialization
     thread::sleep(Duration::from_millis(100));
     
-    // Send initial grid render command
-    if let Ok(result) = render_global_grid(10, 8, 40.0) {
+    // Send initial grid render command using global manager
+    if let Ok(result) = render_global_grid(12, 10, 35.0) {
         match result {
             RenderResult::Success => println!("✅ Initial grid rendering command sent"),
             RenderResult::Error(msg) => println!("⚠️  Grid rendering warning: {}", msg),
@@ -36,7 +29,7 @@ pub fn start_rendering_server(address: &str) -> Result<(), Box<dyn std::error::E
     let server = Server::http(address)
         .map_err(|e| format!("Failed to start HTTP server: {}", e))?;
     
-    println!("🌐 HTTP server started on http:///{}", address);
+    println!("🌐 HTTP server started on http://{}", address);
     println!("📡 Open http://{} in your browser to see the web rendering client", address);
     println!("🎯 The client will automatically render a black and white grid");
     println!("");
@@ -58,6 +51,12 @@ pub fn start_rendering_server(address: &str) -> Result<(), Box<dyn std::error::E
         if let Err(e) = request.respond(response) {
             eprintln!("Error responding to request: {}", e);
         }
+        
+        // Send another grid render command for each request to demonstrate
+        thread::spawn(|| {
+            thread::sleep(Duration::from_millis(1000));
+            let _ = render_global_grid(8, 6, 50.0);
+        });
     }
     
     Ok(())
