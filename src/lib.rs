@@ -1,8 +1,13 @@
 pub mod ecs;
 pub mod ecs_new;
 pub mod ecs_clean;
+pub mod ecs_final;
+pub mod ecs_simple;
 // pub mod ecs_legacy;
 pub mod ecs_example;
+pub mod grid_game_components;
+pub mod grid_game_systems;
+pub mod web_ecs_game;
 // pub mod examples;
 // pub mod diffing;
 pub mod core;
