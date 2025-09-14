@@ -31,3 +31,6 @@ mod input_demo;
 
 #[cfg(test)]
 mod system_dependency_test;
+
+#[cfg(test)]
+mod hierarchy_demo;
