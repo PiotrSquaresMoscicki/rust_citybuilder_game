@@ -1,6 +1,7 @@
 mod ecs;
 mod examples;
 mod http_server;
+mod enhanced_http_server;
 mod mut_demo;
 mod diffing;
 mod diffing_demo;
@@ -8,6 +9,7 @@ mod multiple_iterators_test;
 mod multiple_iterator_systems_test;
 mod core;
 mod math_demo;
+mod rendering;
 
 #[cfg(test)]
 mod diffing_test;
@@ -19,10 +21,22 @@ use multiple_iterators_test::demonstrate_multiple_iterators;
 use multiple_iterator_systems_test::demonstrate_multiple_iterator_systems;
 use math_demo::demonstrate_math_library;
 use http_server::start_hello_world_server;
+use enhanced_http_server::demonstrate_rendering_with_web_client;
+use rendering::{WebServiceManager, WebClientRenderingDevice, initialize_global_rendering_manager, render_global_grid};
 use std::env;
 
 fn main() {
     println!("Welcome to Rust Citybuilder Game!");
+    
+    // Initialize the global rendering manager at program start
+    let web_service = WebServiceManager::new("localhost:8081");
+    let device = Box::new(WebClientRenderingDevice::new(web_service));
+    
+    if let Err(e) = initialize_global_rendering_manager(device) {
+        eprintln!("Warning: Failed to initialize global rendering manager: {}", e);
+    } else {
+        println!("Global rendering manager initialized successfully");
+    }
     
     // Check command line arguments to determine what to run
     let args: Vec<String> = env::args().collect();
@@ -52,6 +66,14 @@ fn main() {
             "math" => {
                 println!("Demonstrating the Math Library...\n");
                 demonstrate_math_library();
+            }
+            "render" => {
+                println!("Demonstrating the Rendering System...\n");
+                demonstrate_rendering_system();
+            }
+            "web-render" => {
+                println!("Starting Web Rendering Client...\n");
+                demonstrate_rendering_with_web_client();
             }
             "server" => {
                 println!("Starting HTTP server...\n");
@@ -95,6 +117,8 @@ fn print_help() {
     println!("    multi-systems       Demonstrate Multiple Iterator Systems (new API)");
     println!("    diff                Demonstrate ECS Diffing System");
     println!("    math                Demonstrate Math Library (Vector2d, Angle2d, Transform2d)");
+    println!("    render              Demonstrate Rendering System with Web Client");
+    println!("    web-render          Start Interactive Web Rendering Client");
     println!("    help                Show this help message");
     println!("");
     println!("EXAMPLES:");
@@ -105,7 +129,41 @@ fn print_help() {
     println!("    cargo run multi              # Run multiple iterators demonstration");
     println!("    cargo run diff               # Run ECS diffing demonstration");
     println!("    cargo run math               # Run math library demonstration");
+    println!("    cargo run render             # Run rendering system demonstration");
+    println!("    cargo run web-render         # Start interactive web rendering client");
     println!("");
+}
+
+fn demonstrate_rendering_system() {
+    use std::thread;
+    use std::time::Duration;
+    
+    println!("🎨 Rendering System Demonstration");
+    println!("================================");
+    
+    // Test global rendering system
+    if render_global_grid(10, 8, 32.0).is_ok() {
+        println!("✅ Successfully sent grid rendering command to web client");
+        println!("   Grid: 10x8 cells, 32px cell size");
+        println!("   Colors: Black lines on white background");
+    } else {
+        println!("❌ Failed to send grid rendering command");
+    }
+    
+    // Give some time for the command to be processed
+    thread::sleep(Duration::from_millis(500));
+    
+    println!("\n📡 Web Service Information:");
+    println!("   Web client available at: http://localhost:8081");
+    println!("   Open this URL in your browser to see the rendered grid");
+    
+    println!("\n🔧 Technical Details:");
+    println!("   - Rendering manager initialized globally at program start");
+    println!("   - Web client rendering device communicates via HTTP");
+    println!("   - Custom protocol sends JSON commands to web client");
+    println!("   - Web client renders using HTML5 Canvas");
+    
+    println!("\nRendering system demonstration complete!");
 }
 
 #[cfg(test)]
