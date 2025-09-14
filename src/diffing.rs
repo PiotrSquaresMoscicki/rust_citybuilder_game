@@ -88,6 +88,57 @@ impl Diffable for String {
     }
 }
 
+impl Diffable for f64 {
+    fn diff(&self, other: &Self) -> Option<Vec<PropertyDiff>> {
+        if (self - other).abs() > f64::EPSILON {
+            Some(vec![PropertyDiff {
+                property_name: "value".to_string(),
+                new_value: ron::to_string(other).unwrap_or_default(),
+            }])
+        } else {
+            None
+        }
+    }
+    
+    fn type_name() -> &'static str {
+        "f64"
+    }
+}
+
+impl Diffable for u64 {
+    fn diff(&self, other: &Self) -> Option<Vec<PropertyDiff>> {
+        if self != other {
+            Some(vec![PropertyDiff {
+                property_name: "value".to_string(),
+                new_value: ron::to_string(other).unwrap_or_default(),
+            }])
+        } else {
+            None
+        }
+    }
+    
+    fn type_name() -> &'static str {
+        "u64"
+    }
+}
+
+impl Diffable for bool {
+    fn diff(&self, other: &Self) -> Option<Vec<PropertyDiff>> {
+        if self != other {
+            Some(vec![PropertyDiff {
+                property_name: "value".to_string(),
+                new_value: ron::to_string(other).unwrap_or_default(),
+            }])
+        } else {
+            None
+        }
+    }
+    
+    fn type_name() -> &'static str {
+        "bool"
+    }
+}
+
 impl<T: Diffable + Clone> Diffable for Vec<T> {
     fn diff(&self, other: &Self) -> Option<Vec<PropertyDiff>> {
         if self.len() != other.len() {

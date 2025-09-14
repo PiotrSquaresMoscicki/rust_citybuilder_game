@@ -588,6 +588,11 @@ impl World {
         entities
     }
     
+    /// Get the total number of entities in the world
+    pub fn entity_count(&self) -> usize {
+        self.entities.len()
+    }
+
     /// Create an EntityIterator with the API: EntityIterator<ComponentType1, Mut<ComponentType2>>
     /// Plain types (T) are accessed immutably, Mut<T> types are accessed mutably
     pub fn iter_entities<A1, A2>(&self) -> EntityIterator<A1, A2>

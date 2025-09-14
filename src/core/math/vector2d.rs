@@ -126,6 +126,9 @@ impl Neg for Vector2d {
     }
 }
 
+// Make Vector2d diffable
+crate::diffable!(Vector2d { x, y });
+
 #[cfg(test)]
 mod tests {
     use super::*;
