@@ -37,9 +37,8 @@ pub fn create_sample_world() -> World {
     let camera_entity = world.create_entity();
     let mut camera = Camera2d::new();
     camera.set_view_dimensions(800.0, 600.0);
-    camera.set_position(Vector2d::new(0.0, 0.0));
     camera.set_scale(1.0);
-    let camera_transform = Transform2dComponent::new();
+    let camera_transform = Transform2dComponent::from_translation(Vector2d::new(0.0, 0.0));
     world.add_component(camera_entity, camera);
     world.add_component(camera_entity, camera_transform);
     println!("Created camera entity at origin");

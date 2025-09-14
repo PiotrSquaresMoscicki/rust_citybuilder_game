@@ -43,32 +43,34 @@ impl Rendering2dSystem {
     ) -> Result<(), Box<dyn Error>> {
         // For now, we only support one camera component
         let camera_data = Self::find_camera(camera_iter)?;
-        let (camera_entity, camera) = camera_data;
+        let (_camera_entity, camera, camera_transform) = camera_data;
 
         // Collect visible sprites
-        let visible_sprites = Self::cull_sprites(sprite_iter, &camera);
+        let visible_sprites = Self::cull_sprites(sprite_iter, &camera, &camera_transform);
         
         // Collect visible shapes
-        let visible_shapes = Self::cull_shapes(shape_iter, &camera);
+        let visible_shapes = Self::cull_shapes(shape_iter, &camera, &camera_transform);
 
         // Send rendering commands to the rendering manager
-        Self::render_entities(visible_sprites, visible_shapes, &camera)?;
+        Self::render_entities(visible_sprites, visible_shapes, &camera, &camera_transform)?;
 
         Ok(())
     }
 
     /// Find the first (and for now, only) camera in the scene
-    fn find_camera(mut camera_iter: EntityIterator<Camera2d, Transform2dComponent>) -> Result<(Entity, Camera2d), Box<dyn Error>> {
-        if let Some((camera, _transform)) = camera_iter.next() {
-            Ok((0, camera.clone())) // Entity ID not available in iterator
+    fn find_camera(mut camera_iter: EntityIterator<Camera2d, Transform2dComponent>) -> Result<(Entity, Camera2d, Transform2dComponent), Box<dyn Error>> {
+        if let Some((camera, transform)) = camera_iter.next() {
+            Ok((0, camera.clone(), transform.clone())) // Entity ID not available in iterator
         } else {
             Err("No camera found in the scene".into())
         }
     }
 
     /// Perform culling on sprites based on camera view
-    fn cull_sprites(sprite_iter: EntityIterator<Sprite2d, Transform2dComponent>, camera: &Camera2d) -> Vec<VisibleSprite> {
+    fn cull_sprites(sprite_iter: EntityIterator<Sprite2d, Transform2dComponent>, camera: &Camera2d, camera_transform: &Transform2dComponent) -> Vec<VisibleSprite> {
         let mut visible_sprites = Vec::new();
+        let camera_position = camera_transform.translation();
+        let camera_rotation = camera_transform.rotation();
 
         for (sprite, transform_component) in sprite_iter {
             if !sprite.is_visible() {
@@ -79,9 +81,9 @@ impl Rendering2dSystem {
             let (sprite_width, sprite_height) = sprite.bounding_box();
             
             // Check if sprite is visible in camera view
-            if camera.is_rect_visible(world_position, sprite_width, sprite_height) {
+            if camera.is_rect_visible(world_position, sprite_width, sprite_height, camera_position, camera_rotation) {
                 // Transform the sprite position using camera view
-                let view_transform = camera.view_transform();
+                let view_transform = camera.view_transform(camera_position, camera_rotation);
                 let transformed = view_transform * transform_component.transform();
                 
                 visible_sprites.push(VisibleSprite {
@@ -98,8 +100,10 @@ impl Rendering2dSystem {
     }
 
     /// Perform culling on shapes based on camera view
-    fn cull_shapes(shape_iter: EntityIterator<Shape2d, Transform2dComponent>, camera: &Camera2d) -> Vec<VisibleShape> {
+    fn cull_shapes(shape_iter: EntityIterator<Shape2d, Transform2dComponent>, camera: &Camera2d, camera_transform: &Transform2dComponent) -> Vec<VisibleShape> {
         let mut visible_shapes = Vec::new();
+        let camera_position = camera_transform.translation();
+        let camera_rotation = camera_transform.rotation();
 
         for (shape, transform_component) in shape_iter {
             if !shape.is_visible() {
@@ -110,9 +114,9 @@ impl Rendering2dSystem {
             let (shape_width, shape_height) = shape.bounding_box();
             
             // Check if shape is visible in camera view
-            if camera.is_rect_visible(world_position, shape_width, shape_height) {
+            if camera.is_rect_visible(world_position, shape_width, shape_height, camera_position, camera_rotation) {
                 // Transform the shape position using camera view
-                let view_transform = camera.view_transform();
+                let view_transform = camera.view_transform(camera_position, camera_rotation);
                 let transformed = view_transform * transform_component.transform();
                 
                 visible_shapes.push(VisibleShape {
@@ -132,7 +136,8 @@ impl Rendering2dSystem {
     fn render_entities(
         visible_sprites: Vec<VisibleSprite>,
         visible_shapes: Vec<VisibleShape>,
-        camera: &Camera2d,
+        _camera: &Camera2d,
+        _camera_transform: &Transform2dComponent,
     ) -> Result<(), Box<dyn Error>> {
         let manager_arc = get_global_rendering_manager()?;
         let manager = manager_arc.lock().map_err(|e| format!("Failed to lock rendering manager: {}", e))?;
@@ -247,8 +252,8 @@ mod tests {
         let camera_iter = world.iter_entities::<Camera2d, Transform2dComponent>();
         let sprite_iter = world.iter_entities::<Sprite2d, Transform2dComponent>();
         
-        let (_, camera) = Rendering2dSystem::find_camera(camera_iter).unwrap();
-        let visible_sprites = Rendering2dSystem::cull_sprites(sprite_iter, &camera);
+        let (_, camera, camera_transform) = Rendering2dSystem::find_camera(camera_iter).unwrap();
+        let visible_sprites = Rendering2dSystem::cull_sprites(sprite_iter, &camera, &camera_transform);
         
         // Should have at least one visible sprite
         assert!(!visible_sprites.is_empty());
@@ -260,8 +265,8 @@ mod tests {
         let camera_iter = world.iter_entities::<Camera2d, Transform2dComponent>();
         let shape_iter = world.iter_entities::<Shape2d, Transform2dComponent>();
         
-        let (_, camera) = Rendering2dSystem::find_camera(camera_iter).unwrap();
-        let visible_shapes = Rendering2dSystem::cull_shapes(shape_iter, &camera);
+        let (_, camera, camera_transform) = Rendering2dSystem::find_camera(camera_iter).unwrap();
+        let visible_shapes = Rendering2dSystem::cull_shapes(shape_iter, &camera, &camera_transform);
         
         // Should have at least one visible shape
         assert!(!visible_shapes.is_empty());
@@ -291,8 +296,8 @@ mod tests {
         let camera_iter = world.iter_entities::<Camera2d, Transform2dComponent>();
         let sprite_iter = world.iter_entities::<Sprite2d, Transform2dComponent>();
         
-        let (_, camera) = Rendering2dSystem::find_camera(camera_iter).unwrap();
-        let visible_sprites = Rendering2dSystem::cull_sprites(sprite_iter, &camera);
+        let (_, camera, camera_transform) = Rendering2dSystem::find_camera(camera_iter).unwrap();
+        let visible_sprites = Rendering2dSystem::cull_sprites(sprite_iter, &camera, &camera_transform);
         
         // Check that sprites are sorted by z-order
         for i in 1..visible_sprites.len() {
