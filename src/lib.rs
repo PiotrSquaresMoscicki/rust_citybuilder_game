@@ -38,3 +38,6 @@ mod hierarchy_demo;
 
 #[cfg(test)]
 mod camera_refactoring_demo;
+
+#[cfg(test)]
+mod replay_test;

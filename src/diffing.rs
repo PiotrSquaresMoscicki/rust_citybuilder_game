@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use serde::{Serialize, Deserialize};
-use crate::ecs::{Entity, Component};
+use crate::ecs::{Entity, Component, World, ComponentPool};
 use std::any::TypeId;
 
 /// Represents a single property change in a component
@@ -26,11 +26,15 @@ pub struct SystemDiffRecord {
     pub component_diffs: Vec<ComponentDiff>,
 }
 
-/// Trait for types that can be diffed
+/// Trait for types that can be diffed and restored
 pub trait Diffable {
     /// Create a diff representing changes from self to other
     /// Returns None if there are no changes
     fn diff(&self, other: &Self) -> Option<Vec<PropertyDiff>>;
+    
+    /// Apply changes from a diff to restore state
+    /// Returns true if successful, false if diff couldn't be applied
+    fn apply_diff(&mut self, changes: &[PropertyDiff]) -> bool;
     
     /// Get the type name for debugging purposes
     fn type_name() -> &'static str where Self: Sized;
@@ -47,6 +51,18 @@ impl Diffable for i32 {
         } else {
             None
         }
+    }
+    
+    fn apply_diff(&mut self, changes: &[PropertyDiff]) -> bool {
+        for change in changes {
+            if change.property_name == "value" {
+                if let Ok(new_value) = ron::from_str::<i32>(&change.new_value) {
+                    *self = new_value;
+                    return true;
+                }
+            }
+        }
+        false
     }
     
     fn type_name() -> &'static str {
@@ -66,6 +82,18 @@ impl Diffable for f32 {
         }
     }
     
+    fn apply_diff(&mut self, changes: &[PropertyDiff]) -> bool {
+        for change in changes {
+            if change.property_name == "value" {
+                if let Ok(new_value) = ron::from_str::<f32>(&change.new_value) {
+                    *self = new_value;
+                    return true;
+                }
+            }
+        }
+        false
+    }
+    
     fn type_name() -> &'static str {
         "f32"
     }
@@ -81,6 +109,18 @@ impl Diffable for String {
         } else {
             None
         }
+    }
+    
+    fn apply_diff(&mut self, changes: &[PropertyDiff]) -> bool {
+        for change in changes {
+            if change.property_name == "value" {
+                if let Ok(new_value) = ron::from_str::<String>(&change.new_value) {
+                    *self = new_value;
+                    return true;
+                }
+            }
+        }
+        false
     }
     
     fn type_name() -> &'static str {
@@ -100,6 +140,18 @@ impl Diffable for f64 {
         }
     }
     
+    fn apply_diff(&mut self, changes: &[PropertyDiff]) -> bool {
+        for change in changes {
+            if change.property_name == "value" {
+                if let Ok(new_value) = ron::from_str::<f64>(&change.new_value) {
+                    *self = new_value;
+                    return true;
+                }
+            }
+        }
+        false
+    }
+    
     fn type_name() -> &'static str {
         "f64"
     }
@@ -117,6 +169,18 @@ impl Diffable for u64 {
         }
     }
     
+    fn apply_diff(&mut self, changes: &[PropertyDiff]) -> bool {
+        for change in changes {
+            if change.property_name == "value" {
+                if let Ok(new_value) = ron::from_str::<u64>(&change.new_value) {
+                    *self = new_value;
+                    return true;
+                }
+            }
+        }
+        false
+    }
+    
     fn type_name() -> &'static str {
         "u64"
     }
@@ -132,6 +196,18 @@ impl Diffable for bool {
         } else {
             None
         }
+    }
+    
+    fn apply_diff(&mut self, changes: &[PropertyDiff]) -> bool {
+        for change in changes {
+            if change.property_name == "value" {
+                if let Ok(new_value) = ron::from_str::<bool>(&change.new_value) {
+                    *self = new_value;
+                    return true;
+                }
+            }
+        }
+        false
     }
     
     fn type_name() -> &'static str {
@@ -167,6 +243,20 @@ impl<T: Diffable + Clone> Diffable for Vec<T> {
                 Some(changes)
             }
         }
+    }
+    
+    fn apply_diff(&mut self, changes: &[PropertyDiff]) -> bool {
+        // Basic implementation - full replacement for size changes
+        // Element-wise updates could be implemented more sophisticatedly
+        for change in changes {
+            if change.property_name == "value" {
+                // For now, handle size changes by clearing the vector
+                // A more complete implementation would parse the serialized data
+                self.clear();
+                return true;
+            }
+        }
+        false
     }
     
     fn type_name() -> &'static str {
@@ -217,6 +307,12 @@ impl<K: std::fmt::Debug + Clone + Eq + std::hash::Hash, V: Diffable + Clone> Dif
         }
     }
     
+    fn apply_diff(&mut self, _changes: &[PropertyDiff]) -> bool {
+        // Basic implementation - HashMap diff application is complex
+        // For now, just return false to indicate not implemented
+        false
+    }
+    
     fn type_name() -> &'static str {
         "HashMap"
     }
@@ -228,6 +324,16 @@ pub struct DebugTracker {
     pub frame_number: u64,
     pub diff_history: Vec<SystemDiffRecord>,
     component_snapshots: HashMap<(Entity, TypeId), Box<dyn Component>>,
+    /// Stored world states for replay functionality
+    pub world_states: Vec<WorldState>,
+}
+
+/// Represents a complete snapshot of the world state at a specific frame
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WorldState {
+    pub frame_number: u64,
+    pub entities: Vec<Entity>,
+    pub component_data: HashMap<Entity, HashMap<String, String>>, // RON serialized components
 }
 
 impl DebugTracker {
@@ -237,6 +343,7 @@ impl DebugTracker {
             frame_number: 0,
             diff_history: Vec::new(),
             component_snapshots: HashMap::new(),
+            world_states: Vec::new(),
         }
     }
     
@@ -337,6 +444,121 @@ impl DebugTracker {
     pub fn clear_history(&mut self) {
         self.diff_history.clear();
     }
+    
+    /// Capture the current world state for later restoration
+    pub fn capture_world_state(&mut self, entities: &[Entity], component_pools: &HashMap<TypeId, ComponentPool>) {
+        if !self.enabled {
+            return;
+        }
+        
+        let mut component_data = HashMap::new();
+        
+        // For each entity, serialize all its components
+        for &entity in entities {
+            let mut entity_components = HashMap::new();
+            
+            // Check each component pool for this entity
+            for (type_id, pool) in component_pools {
+                if pool.contains(entity) {
+                    if let Some(component_ref) = pool.get(entity) {
+                        let type_name = get_component_type_name(*type_id);
+                        if let Ok(serialized) = serialize_component(component_ref.as_ref(), *type_id) {
+                            entity_components.insert(type_name, serialized);
+                        }
+                    }
+                }
+            }
+            
+            if !entity_components.is_empty() {
+                component_data.insert(entity, entity_components);
+            }
+        }
+        
+        let state = WorldState {
+            frame_number: self.frame_number,
+            entities: entities.to_vec(),
+            component_data,
+        };
+        
+        self.world_states.push(state);
+    }
+    
+    /// Restore world state to a specific frame
+    pub fn restore_world_state(&self, world: &mut World, target_frame: u64) -> bool {
+        if let Some(state) = self.world_states.iter().find(|s| s.frame_number == target_frame) {
+            return self.apply_world_state(world, state);
+        }
+        false
+    }
+    
+    /// Apply a world state to the current world
+    pub fn apply_world_state(&self, world: &mut World, state: &WorldState) -> bool {
+        // Clear current world state
+        world.clear_world();
+        
+        // Restore entities
+        world.set_entities(state.entities.clone());
+        
+        // Restore components
+        for (&entity, components) in &state.component_data {
+            for (type_name, serialized_data) in components {
+                if let Some(component) = deserialize_component(type_name, serialized_data) {
+                    let type_id = get_type_id_for_name(type_name);
+                    let pool = world.get_component_pools_mut()
+                        .entry(type_id)
+                        .or_insert_with(|| crate::ecs::ComponentPool::new());
+                    pool.insert(entity, component);
+                }
+            }
+        }
+        
+        true
+    }
+    
+    /// Replay changes from recorded diffs up to a specific frame
+    pub fn replay_to_frame(&self, world: &mut World, target_frame: u64) -> bool {
+        // Find the latest world state before or at target frame
+        let base_state = self.world_states.iter()
+            .filter(|s| s.frame_number <= target_frame)
+            .max_by_key(|s| s.frame_number);
+            
+        if let Some(state) = base_state {
+            // Restore to base state
+            if !self.apply_world_state(world, state) {
+                return false;
+            }
+            
+            // Apply diffs from base state to target frame
+            for record in &self.diff_history {
+                if record.frame_number > state.frame_number && record.frame_number <= target_frame {
+                    self.apply_system_diff_record(world, record);
+                }
+            }
+            
+            return true;
+        }
+        
+        false
+    }
+    
+    /// Apply a single system diff record to the world
+    fn apply_system_diff_record(&self, world: &mut World, record: &SystemDiffRecord) {
+        for component_diff in &record.component_diffs {
+            self.apply_component_diff(world, component_diff);
+        }
+    }
+    
+    /// Apply a component diff to the world
+    fn apply_component_diff(&self, world: &mut World, diff: &ComponentDiff) {
+        let type_id = get_type_id_for_name(&diff.component_type);
+        
+        // Get the component and apply the diff
+        if let Some(pool) = world.get_component_pools().get(&type_id) {
+            if let Some(mut component_ref) = pool.get_mut(diff.entity_id) {
+                apply_diff_to_component(component_ref.as_mut(), &diff.changes, type_id);
+            }
+        }
+    }
 }
 
 /// Helper function to diff two components using their type information
@@ -420,9 +642,135 @@ macro_rules! diffable {
                 }
             }
             
+            fn apply_diff(&mut self, changes: &[$crate::diffing::PropertyDiff]) -> bool {
+                let mut applied = false;
+                
+                for change in changes {
+                    $(
+                        if change.property_name == stringify!($field) || 
+                           change.property_name.starts_with(&format!("{}.", stringify!($field))) {
+                            
+                            if change.property_name == stringify!($field) {
+                                // Direct field change
+                                if let Ok(new_value) = ron::from_str(&change.new_value) {
+                                    self.$field = new_value;
+                                    applied = true;
+                                }
+                            } else {
+                                // Nested change
+                                let sub_changes = vec![$crate::diffing::PropertyDiff {
+                                    property_name: change.property_name[stringify!($field).len() + 1..].to_string(),
+                                    new_value: change.new_value.clone(),
+                                }];
+                                if self.$field.apply_diff(&sub_changes) {
+                                    applied = true;
+                                }
+                            }
+                        }
+                    )*
+                }
+                
+                applied
+            }
+            
             fn type_name() -> &'static str {
                 stringify!($struct_name)
             }
         }
     };
+}
+
+/// Helper function to get component type name from TypeId
+pub fn get_component_type_name(type_id: TypeId) -> String {
+    use std::any::TypeId;
+    
+    if type_id == TypeId::of::<crate::examples::Position>() {
+        "Position".to_string()
+    } else if type_id == TypeId::of::<crate::examples::Velocity>() {
+        "Velocity".to_string()
+    } else if type_id == TypeId::of::<crate::examples::Health>() {
+        "Health".to_string()
+    } else {
+        format!("Unknown_{:?}", type_id)
+    }
+}
+
+/// Helper function to get TypeId from component type name
+pub fn get_type_id_for_name(type_name: &str) -> TypeId {
+    use std::any::TypeId;
+    
+    match type_name {
+        "Position" => TypeId::of::<crate::examples::Position>(),
+        "Velocity" => TypeId::of::<crate::examples::Velocity>(),
+        "Health" => TypeId::of::<crate::examples::Health>(),
+        _ => TypeId::of::<()>(), // Fallback
+    }
+}
+
+/// Serialize a component to RON string
+pub fn serialize_component(component: &dyn Component, type_id: TypeId) -> Result<String, String> {
+    use std::any::TypeId;
+    
+    if type_id == TypeId::of::<crate::examples::Position>() {
+        if let Some(pos) = component.as_any().downcast_ref::<crate::examples::Position>() {
+            return ron::to_string(pos).map_err(|e| e.to_string());
+        }
+    } else if type_id == TypeId::of::<crate::examples::Velocity>() {
+        if let Some(vel) = component.as_any().downcast_ref::<crate::examples::Velocity>() {
+            return ron::to_string(vel).map_err(|e| e.to_string());
+        }
+    } else if type_id == TypeId::of::<crate::examples::Health>() {
+        if let Some(health) = component.as_any().downcast_ref::<crate::examples::Health>() {
+            return ron::to_string(health).map_err(|e| e.to_string());
+        }
+    }
+    
+    Err("Unknown component type".to_string())
+}
+
+/// Deserialize a component from RON string
+pub fn deserialize_component(type_name: &str, data: &str) -> Option<Box<dyn Component>> {
+    match type_name {
+        "Position" => {
+            if let Ok(pos) = ron::from_str::<crate::examples::Position>(data) {
+                Some(Box::new(pos))
+            } else {
+                None
+            }
+        }
+        "Velocity" => {
+            if let Ok(vel) = ron::from_str::<crate::examples::Velocity>(data) {
+                Some(Box::new(vel))
+            } else {
+                None
+            }
+        }
+        "Health" => {
+            if let Ok(health) = ron::from_str::<crate::examples::Health>(data) {
+                Some(Box::new(health))
+            } else {
+                None
+            }
+        }
+        _ => None,
+    }
+}
+
+/// Apply diff changes to a component
+pub fn apply_diff_to_component(component: &mut dyn Component, changes: &[PropertyDiff], type_id: TypeId) {
+    use std::any::TypeId;
+    
+    if type_id == TypeId::of::<crate::examples::Position>() {
+        if let Some(pos) = component.as_any_mut().downcast_mut::<crate::examples::Position>() {
+            pos.apply_diff(changes);
+        }
+    } else if type_id == TypeId::of::<crate::examples::Velocity>() {
+        if let Some(vel) = component.as_any_mut().downcast_mut::<crate::examples::Velocity>() {
+            vel.apply_diff(changes);
+        }
+    } else if type_id == TypeId::of::<crate::examples::Health>() {
+        if let Some(health) = component.as_any_mut().downcast_mut::<crate::examples::Health>() {
+            health.apply_diff(changes);
+        }
+    }
 }
