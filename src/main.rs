@@ -27,6 +27,7 @@ use http_server::start_hello_world_server;
 use enhanced_http_server::demonstrate_rendering_with_web_client;
 use rendering::{WebServiceManager, WebClientRenderingDevice, initialize_global_rendering_manager, render_global_grid};
 use rust_citybuilder_game::grid_game::{demonstrate_grid_game, run_interactive_grid_game};
+use rust_citybuilder_game::web_grid_game::demonstrate_web_grid_game;
 // use system_object_example::demonstrate_system_objects;
 use std::env;
 
@@ -96,6 +97,10 @@ fn main() {
                 println!("Running Interactive Grid Game Demo...\n");
                 run_interactive_grid_game();
             }
+            "web-game" => {
+                println!("Starting Web Grid Game...\n");
+                demonstrate_web_grid_game();
+            }
             "server" => {
                 println!("Starting HTTP server...\n");
                 let address = args.get(2).map(|s| s.as_str()).unwrap_or("localhost:8080");
@@ -144,6 +149,7 @@ fn print_help() {
     println!("    web-render          Start Interactive Web Rendering Client");
     println!("    game                Start 2D Grid Game");
     println!("    game-demo           Run Interactive Grid Game Demo");
+    println!("    web-game            Start Web-based Grid Game");
     println!("    help                Show this help message");
     println!("");
     println!("EXAMPLES:");
@@ -160,6 +166,7 @@ fn print_help() {
     println!("    cargo run web-render         # Start interactive web rendering client");
     println!("    cargo run game               # Start 2D grid game");
     println!("    cargo run game-demo          # Run interactive grid game demo");
+    println!("    cargo run web-game           # Start web-based grid game");
     println!("");
 }
 

@@ -16,6 +16,7 @@ pub mod game_components;
 pub mod player_movement_system;
 pub mod game_renderer;
 pub mod grid_game;
+pub mod web_grid_game;
 
 // #[cfg(test)]
 // mod main_test;
