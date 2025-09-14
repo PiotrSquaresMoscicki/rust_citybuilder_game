@@ -640,6 +640,16 @@ impl World {
     pub fn entity_count(&self) -> usize {
         self.entities.len()
     }
+    
+    /// Get all entities (for hierarchy management and other systems)
+    pub fn get_entities(&self) -> &[Entity] {
+        &self.entities
+    }
+    
+    /// Check if an entity exists
+    pub fn entity_exists(&self, entity: Entity) -> bool {
+        self.entities.contains(&entity)
+    }
 
     /// Create an EntityIterator with the API: EntityIterator<ComponentType1, Mut<ComponentType2>>
     /// Plain types (T) are accessed immutably, Mut<T> types are accessed mutably
