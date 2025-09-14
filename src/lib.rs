@@ -23,3 +23,6 @@ mod rendering_test;
 
 #[cfg(test)]
 mod input_test;
+
+#[cfg(test)]
+mod input_demo;
