@@ -284,14 +284,24 @@ pub enum DependencyError {
     UnknownSystemDependency(SystemTypeId),
 }
 
-/// Trait for systems that can declare dependencies on other systems
-pub trait SystemDependencies {
-    /// Return a tuple/vector of system type IDs that this system depends on
-    /// These systems will be executed before this system
-    fn dependencies() -> Vec<SystemTypeId>;
-    
+/// Trait for systems that are objects with an update method
+pub trait System {
     /// Get the unique type identifier for this system
-    fn system_type_id() -> SystemTypeId;
+    fn system_type_id(&self) -> SystemTypeId;
+    
+    /// Get the dependencies of this system
+    /// These systems will be executed before this system
+    fn get_dependencies(&self) -> Vec<SystemTypeId>;
+    
+    /// Update method that takes entity iterators as needed
+    /// The implementation should call world.iter_entities() to get iterators
+    fn update(&self, world: &World);
+    
+    /// Get a description of this system for debugging purposes
+    fn get_system_name(&self) -> &str;
+    
+    /// Get the component types that this system accesses mutably (for debugging)
+    fn get_mutable_component_types(&self) -> Vec<TypeId>;
 }
 
 /// Trait for systems that can be called with different iterator combinations
@@ -563,12 +573,17 @@ pub struct World {
     next_entity_id: Entity,
     entities: Vec<Entity>,
     component_pools: HashMap<TypeId, ComponentPool>,
-    systems: Vec<Box<dyn SystemCall>>,
+    systems: Vec<Box<dyn System>>,
     /// Ordered systems after dependency resolution
     ordered_systems: Vec<usize>, // Indices into systems vec
     /// Map from system type ID to index in systems vec
     system_type_map: HashMap<SystemTypeId, usize>,
     legacy_systems: Vec<Box<dyn Fn(&World)>>, // Keep legacy systems for backward compatibility
+    legacy_system_calls: Vec<Box<dyn SystemCall>>, // Keep old SystemCall systems for backward compatibility
+    /// Map from system type ID to index in legacy_system_calls vec
+    legacy_system_type_map: HashMap<SystemTypeId, usize>,
+    /// Ordered legacy systems after dependency resolution
+    ordered_legacy_systems: Vec<usize>, // Indices into legacy_system_calls vec
     pub debug_tracker: DebugTracker,
 }
 
@@ -583,6 +598,9 @@ impl World {
             ordered_systems: Vec::new(),
             system_type_map: HashMap::new(),
             legacy_systems: Vec::new(),
+            legacy_system_calls: Vec::new(),
+            legacy_system_type_map: HashMap::new(),
+            ordered_legacy_systems: Vec::new(),
             debug_tracker: DebugTracker::new(),
         }
     }
@@ -701,6 +719,18 @@ impl World {
         EntityIterator::new(self)
     }
     
+    /// Add a system object to the world
+    pub fn add_system_object<S: System + 'static>(&mut self, system: S) -> Result<(), DependencyError> {
+        let system_type_id = system.system_type_id();
+        let index = self.systems.len();
+        
+        self.systems.push(Box::new(system));
+        self.system_type_map.insert(system_type_id, index);
+        
+        // Try to resolve dependencies
+        self.try_resolve_dependencies()
+    }
+    
     /// Add a legacy system to the world (for backward compatibility)
     pub fn add_system<F>(&mut self, system: F)
     where
@@ -717,7 +747,7 @@ impl World {
         F: Fn(EntityIterator<A1, A2>) + 'static,
     {
         let system_impl = SingleIteratorSystem::new(system, system_name.to_string());
-        self.systems.push(Box::new(system_impl));
+        self.legacy_system_calls.push(Box::new(system_impl));
         self.invalidate_system_order();
     }
 
@@ -735,12 +765,12 @@ impl World {
         F: Fn(EntityIterator<A1, A2>) + 'static,
     {
         let system_impl = SingleIteratorSystem::with_dependencies(system, system_name.to_string(), system_type_id, dependencies);
-        let index = self.systems.len();
-        self.systems.push(Box::new(system_impl));
-        self.system_type_map.insert(system_type_id, index);
+        let index = self.legacy_system_calls.len();
+        self.legacy_system_calls.push(Box::new(system_impl));
+        self.legacy_system_type_map.insert(system_type_id, index);
         
-        // Only resolve dependencies if all dependencies are resolved (allow forward refs)
-        self.try_resolve_dependencies()
+        // Try to resolve legacy system dependencies
+        self.try_resolve_legacy_dependencies()
     }
     
     /// Add a system that takes two entity iterators
@@ -753,7 +783,7 @@ impl World {
         F: Fn(EntityIterator<A1, A2>, EntityIterator<B1, B2>) + 'static,
     {
         let system_impl = DualIteratorSystem::new(system, system_name.to_string());
-        self.systems.push(Box::new(system_impl));
+        self.legacy_system_calls.push(Box::new(system_impl));
         self.invalidate_system_order();
     }
 
@@ -773,10 +803,10 @@ impl World {
         F: Fn(EntityIterator<A1, A2>, EntityIterator<B1, B2>) + 'static,
     {
         let system_impl = DualIteratorSystem::with_dependencies(system, system_name.to_string(), system_type_id, dependencies);
-        let index = self.systems.len();
-        self.systems.push(Box::new(system_impl));
-        self.system_type_map.insert(system_type_id, index);
-        self.try_resolve_dependencies()
+        let index = self.legacy_system_calls.len();
+        self.legacy_system_calls.push(Box::new(system_impl));
+        self.legacy_system_type_map.insert(system_type_id, index);
+        self.try_resolve_legacy_dependencies()
     }
     
     /// Add a system that takes three entity iterators
@@ -791,7 +821,7 @@ impl World {
         F: Fn(EntityIterator<A1, A2>, EntityIterator<B1, B2>, EntityIterator<C1, C2>) + 'static,
     {
         let system_impl = TripleIteratorSystem::new(system, system_name.to_string());
-        self.systems.push(Box::new(system_impl));
+        self.legacy_system_calls.push(Box::new(system_impl));
         self.invalidate_system_order();
     }
 
@@ -813,20 +843,36 @@ impl World {
         F: Fn(EntityIterator<A1, A2>, EntityIterator<B1, B2>, EntityIterator<C1, C2>) + 'static,
     {
         let system_impl = TripleIteratorSystem::with_dependencies(system, system_name.to_string(), system_type_id, dependencies);
-        let index = self.systems.len();
-        self.systems.push(Box::new(system_impl));
-        self.system_type_map.insert(system_type_id, index);
-        self.try_resolve_dependencies()
+        let index = self.legacy_system_calls.len();
+        self.legacy_system_calls.push(Box::new(system_impl));
+        self.legacy_system_type_map.insert(system_type_id, index);
+        self.try_resolve_legacy_dependencies()
     }
     
-    /// Run all systems (both new iterator-based and legacy) in dependency order
-    pub fn run_systems(&self) {
-        // Run new iterator-based systems in dependency order
-        for &system_index in &self.ordered_systems {
-            self.systems[system_index].call(self);
+    /// Run all systems (new System objects, legacy SystemCall, and legacy functions) in dependency order
+    pub fn run_systems(&mut self) {
+        // Get execution order for new systems
+        let ordered_systems = self.ordered_systems.clone();
+        
+        // Run new System objects in dependency order
+        for &system_index in &ordered_systems {
+            if system_index < self.systems.len() {
+                // For now, just call update without debug tracking
+                // We'll need to make systems have an update method that takes &World
+                // and make the systems manage their own state mutations if needed
+                self.systems[system_index].update(self);
+            }
         }
         
-        // Run legacy systems for backward compatibility
+        // Run legacy SystemCall systems in dependency order
+        let ordered_legacy_systems = self.ordered_legacy_systems.clone();
+        for &system_index in &ordered_legacy_systems {
+            if system_index < self.legacy_system_calls.len() {
+                self.legacy_system_calls[system_index].call(self);
+            }
+        }
+        
+        // Run legacy function systems for backward compatibility
         for system in &self.legacy_systems {
             system(self);
         }
@@ -834,17 +880,83 @@ impl World {
     
     /// Force resolution of dependencies before running systems
     pub fn finalize_systems(&mut self) -> Result<(), DependencyError> {
-        self.resolve_dependencies()
+        // Resolve dependencies for both new and legacy systems
+        self.resolve_dependencies()?;
+        self.resolve_legacy_dependencies()?;
+        Ok(())
     }
     
-    /// Run all new iterator-based systems with debug tracking
-    pub fn run_iterator_systems_with_debug(&mut self) {
-        for system in &self.systems {
+    /// Run all new System objects with debug tracking
+    pub fn run_systems_with_debug(&mut self) {
+        // Get execution order for new systems
+        let ordered_systems = self.ordered_systems.clone();
+        
+        for &system_index in &ordered_systems {
+            if system_index < self.systems.len() {
+                let mutable_types = self.systems[system_index].get_mutable_component_types();
+                let system_name = self.systems[system_index].get_system_name();
+                
+                if self.debug_tracker.enabled {
+                    // Get all entities that have any of the mutable component types
+                    let mut tracked_entities = std::collections::HashSet::new();
+                    for &type_id in &mutable_types {
+                        for entity in self.component_pools.get(&type_id).map_or(vec![], |pool| pool.entities().collect()) {
+                            tracked_entities.insert(entity);
+                        }
+                    }
+                    let entities: Vec<Entity> = tracked_entities.into_iter().collect();
+                    
+                    // Take snapshot before system execution
+                    let mut snapshots = HashMap::new();
+                    for &entity in &entities {
+                        for &type_id in &mutable_types {
+                            if let Some(component) = self.get_component_snapshot(entity, type_id) {
+                                snapshots.insert((entity, type_id), component);
+                            }
+                        }
+                    }
+                    
+                    // Run the system
+                    self.systems[system_index].update(self);
+                    
+                    // Record diffs after system execution
+                    let mut component_diffs = Vec::new();
+                    for &entity in &entities {
+                        for &type_id in &mutable_types {
+                            if let Some(old_component) = snapshots.get(&(entity, type_id)) {
+                                if let Some(new_component) = self.get_component_snapshot(entity, type_id) {
+                                    // Use diffable trait to get actual differences
+                                    if let Some(mut diff) = diff_components(old_component.as_ref(), new_component.as_ref(), type_id) {
+                                        diff.entity_id = entity;
+                                        component_diffs.push(diff);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    
+                    if !component_diffs.is_empty() {
+                        let record = crate::diffing::SystemDiffRecord {
+                            frame_number: self.debug_tracker.frame_number,
+                            system_name: system_name.to_string(),
+                            component_diffs,
+                        };
+                        self.debug_tracker.diff_history.push(record);
+                    }
+                } else {
+                    // Just run the system without tracking
+                    self.systems[system_index].update(self);
+                }
+            }
+        }
+        
+        // Also run legacy systems with debug tracking
+        for system in &self.legacy_system_calls {
             let mutable_types = system.get_mutable_component_types();
             let system_name = system.get_system_name();
             
             if self.debug_tracker.enabled {
-                // Get all entities that have any of the mutable component types
+                // Same debug tracking logic as above
                 let mut tracked_entities = std::collections::HashSet::new();
                 for &type_id in &mutable_types {
                     for entity in self.component_pools.get(&type_id).map_or(vec![], |pool| pool.entities().collect()) {
@@ -853,7 +965,6 @@ impl World {
                 }
                 let entities: Vec<Entity> = tracked_entities.into_iter().collect();
                 
-                // Take snapshot before system execution
                 let mut snapshots = HashMap::new();
                 for &entity in &entities {
                     for &type_id in &mutable_types {
@@ -863,16 +974,13 @@ impl World {
                     }
                 }
                 
-                // Run the system
                 system.call(self);
                 
-                // Record diffs after system execution
                 let mut component_diffs = Vec::new();
                 for &entity in &entities {
                     for &type_id in &mutable_types {
                         if let Some(old_component) = snapshots.get(&(entity, type_id)) {
                             if let Some(new_component) = self.get_component_snapshot(entity, type_id) {
-                                // Use diffable trait to get actual differences
                                 if let Some(mut diff) = diff_components(old_component.as_ref(), new_component.as_ref(), type_id) {
                                     diff.entity_id = entity;
                                     component_diffs.push(diff);
@@ -891,7 +999,6 @@ impl World {
                     self.debug_tracker.diff_history.push(record);
                 }
             } else {
-                // Just run the system without tracking
                 system.call(self);
             }
         }
@@ -922,12 +1029,17 @@ impl World {
         self.debug_tracker.clear_history();
     }
     
-    /// Get the number of registered iterator-based systems (for testing)
+    /// Get the number of registered System objects (for testing)
     pub fn system_count(&self) -> usize {
         self.systems.len()
     }
     
-    /// Get the number of registered legacy systems (for testing)
+    /// Get the number of registered legacy SystemCall systems (for testing)
+    pub fn legacy_system_call_count(&self) -> usize {
+        self.legacy_system_calls.len()
+    }
+    
+    /// Get the number of registered legacy function systems (for testing)
     pub fn legacy_system_count(&self) -> usize {
         self.legacy_systems.len()
     }
@@ -997,11 +1109,45 @@ impl World {
         }
     }
 
+    /// Try to resolve dependencies for legacy systems only
+    fn try_resolve_legacy_dependencies(&mut self) -> Result<(), DependencyError> {
+        // Check if all dependencies are registered for legacy SystemCall systems
+        let mut missing_deps = Vec::new();
+        for system in &self.legacy_system_calls {
+            for dep in system.get_dependencies() {
+                if !dep.is_empty() && !self.legacy_system_type_map.contains_key(dep) {
+                    missing_deps.push(dep);
+                }
+            }
+        }
+        
+        // If there are missing dependencies, just update ordered_legacy_systems with current systems
+        if !missing_deps.is_empty() {
+            // Add new legacy systems to the end for now
+            while self.ordered_legacy_systems.len() < self.legacy_system_calls.len() {
+                self.ordered_legacy_systems.push(self.ordered_legacy_systems.len());
+            }
+            return Ok(()); // Don't fail on missing deps, they might be added later
+        }
+        
+        // All dependencies are available, do full resolution for legacy systems
+        self.resolve_legacy_dependencies()
+    }
+
     /// Try to resolve dependencies, allowing for forward references
     fn try_resolve_dependencies(&mut self) -> Result<(), DependencyError> {
-        // Check if all dependencies are registered
+        // Check if all dependencies are registered for new System objects
         let mut missing_deps = Vec::new();
         for system in &self.systems {
+            for dep in system.get_dependencies() {
+                if !dep.is_empty() && !self.system_type_map.contains_key(dep) {
+                    missing_deps.push(dep);
+                }
+            }
+        }
+        
+        // Check dependencies for legacy SystemCall objects too
+        for system in &self.legacy_system_calls {
             for dep in system.get_dependencies() {
                 if !dep.is_empty() && !self.system_type_map.contains_key(dep) {
                     missing_deps.push(dep);
@@ -1025,24 +1171,27 @@ impl World {
     /// Resolve system dependencies and create execution order
     /// Returns error if circular dependencies are detected
     fn resolve_dependencies(&mut self) -> Result<(), DependencyError> {
-        // Build dependency graph
+        // Build dependency graph for new System objects only for now
+        // Legacy systems will be handled separately
         let mut dependency_graph: HashMap<usize, Vec<usize>> = HashMap::new();
         let mut dependents: HashMap<usize, HashSet<usize>> = HashMap::new();
         
-        // Initialize graph
+        // Initialize graph for new System objects
         for i in 0..self.systems.len() {
             dependency_graph.insert(i, Vec::new());
             dependents.insert(i, HashSet::new());
         }
         
-        // Populate graph with dependencies
+        // Populate graph with dependencies for new System objects
         for (i, system) in self.systems.iter().enumerate() {
             let deps = system.get_dependencies();
             for dep_type_id in deps {
                 if let Some(&dep_index) = self.system_type_map.get(dep_type_id) {
-                    // This system depends on dep_index
-                    dependency_graph.get_mut(&i).unwrap().push(dep_index);
-                    dependents.get_mut(&dep_index).unwrap().insert(i);
+                    if dep_index < 1000 { // Only new systems (not legacy with offset)
+                        // This system depends on dep_index
+                        dependency_graph.get_mut(&i).unwrap().push(dep_index);
+                        dependents.get_mut(&dep_index).unwrap().insert(i);
+                    }
                 } else if !dep_type_id.is_empty() {
                     // Unknown dependency
                     return Err(DependencyError::UnknownSystemDependency(dep_type_id));
@@ -1086,13 +1235,87 @@ impl World {
             let mut cycle_systems = Vec::new();
             for i in 0..self.systems.len() {
                 if in_degree[i] > 0 {
-                    cycle_systems.push(self.systems[i].get_system_type_id());
+                    cycle_systems.push(self.systems[i].system_type_id());
                 }
             }
             return Err(DependencyError::CircularDependency(cycle_systems));
         }
         
         self.ordered_systems = ordered;
+        Ok(())
+    }
+    
+    /// Resolve legacy system dependencies and create execution order
+    /// Returns error if circular dependencies are detected
+    fn resolve_legacy_dependencies(&mut self) -> Result<(), DependencyError> {
+        // Build dependency graph for legacy SystemCall systems
+        let mut dependency_graph: HashMap<usize, Vec<usize>> = HashMap::new();
+        let mut dependents: HashMap<usize, HashSet<usize>> = HashMap::new();
+        
+        // Initialize graph for legacy SystemCall systems
+        for i in 0..self.legacy_system_calls.len() {
+            dependency_graph.insert(i, Vec::new());
+            dependents.insert(i, HashSet::new());
+        }
+        
+        // Populate graph with dependencies for legacy SystemCall systems
+        for (i, system) in self.legacy_system_calls.iter().enumerate() {
+            let deps = system.get_dependencies();
+            for dep_type_id in deps {
+                if let Some(&dep_index) = self.legacy_system_type_map.get(dep_type_id) {
+                    // This system depends on dep_index
+                    dependency_graph.get_mut(&i).unwrap().push(dep_index);
+                    dependents.get_mut(&dep_index).unwrap().insert(i);
+                } else if !dep_type_id.is_empty() {
+                    // Unknown dependency
+                    return Err(DependencyError::UnknownSystemDependency(dep_type_id));
+                }
+            }
+        }
+        
+        // Topological sort using Kahn's algorithm
+        let mut ordered = Vec::new();
+        let mut in_degree = vec![0; self.legacy_system_calls.len()];
+        
+        // Calculate in-degrees
+        for i in 0..self.legacy_system_calls.len() {
+            in_degree[i] = dependency_graph[&i].len();
+        }
+        
+        // Queue nodes with no dependencies
+        let mut queue = VecDeque::new();
+        for i in 0..self.legacy_system_calls.len() {
+            if in_degree[i] == 0 {
+                queue.push_back(i);
+            }
+        }
+        
+        // Process queue
+        while let Some(current) = queue.pop_front() {
+            ordered.push(current);
+            
+            // Reduce in-degree for all dependents
+            for &dependent in &dependents[&current] {
+                in_degree[dependent] -= 1;
+                if in_degree[dependent] == 0 {
+                    queue.push_back(dependent);
+                }
+            }
+        }
+        
+        // Check for circular dependencies
+        if ordered.len() != self.legacy_system_calls.len() {
+            // Find systems involved in circular dependency
+            let mut cycle_systems = Vec::new();
+            for i in 0..self.legacy_system_calls.len() {
+                if in_degree[i] > 0 {
+                    cycle_systems.push(self.legacy_system_calls[i].get_system_type_id());
+                }
+            }
+            return Err(DependencyError::CircularDependency(cycle_systems));
+        }
+        
+        self.ordered_legacy_systems = ordered;
         Ok(())
     }
     
@@ -1106,17 +1329,39 @@ impl World {
         }
     }
     
-    /// Get the execution order of systems (for testing)
+    /// Get the execution order of systems (both new and legacy)
     pub fn get_system_execution_order(&self) -> Vec<&str> {
-        self.ordered_systems
-            .iter()
-            .map(|&i| self.systems[i].get_system_name())
-            .collect()
+        let mut order = Vec::new();
+        
+        // Add new System objects execution order first
+        for &i in &self.ordered_systems {
+            if i < self.systems.len() {
+                order.push(self.systems[i].get_system_name());
+            }
+        }
+        
+        // Add legacy SystemCall systems execution order
+        for &i in &self.ordered_legacy_systems {
+            if i < self.legacy_system_calls.len() {
+                order.push(self.legacy_system_calls[i].get_system_name());
+            }
+        }
+        
+        order
     }
     
-    /// Get system dependencies (for testing)
+    /// Get system dependencies for both new System objects and legacy SystemCall systems
     pub fn get_system_dependencies(&self, system_name: &str) -> Option<Vec<SystemTypeId>> {
-        self.systems
+        // First check new System objects
+        if let Some(deps) = self.systems
+            .iter()
+            .find(|s| s.get_system_name() == system_name)
+            .map(|s| s.get_dependencies()) {
+            return Some(deps);
+        }
+        
+        // Then check legacy SystemCall systems
+        self.legacy_system_calls
             .iter()
             .find(|s| s.get_system_name() == system_name)
             .map(|s| s.get_dependencies())
