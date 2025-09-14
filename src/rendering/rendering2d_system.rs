@@ -58,9 +58,9 @@ impl Rendering2dSystem {
     }
 
     /// Find the first (and for now, only) camera in the scene
-    fn find_camera(mut camera_iter: EntityIterator<Camera2d, Transform2dComponent>) -> Result<(Entity, Camera2d), Box<dyn Error>> {
-        if let Some((camera, _transform)) = camera_iter.next() {
-            Ok((0, camera.clone())) // Entity ID not available in iterator
+    fn find_camera(mut camera_iter: EntityIterator<Camera2d, Transform2dComponent>) -> Result<(Entity, Camera2d, Transform2dComponent), Box<dyn Error>> {
+        if let Some((camera, transform)) = camera_iter.next() {
+            Ok((0, camera.clone(), transform.clone())) // Entity ID not available in iterator
         } else {
             Err("No camera found in the scene".into())
         }
