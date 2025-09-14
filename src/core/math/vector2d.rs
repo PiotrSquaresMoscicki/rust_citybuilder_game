@@ -1,7 +1,8 @@
 use std::ops::{Add, Sub, Mul, Div, Neg};
+use serde::{Serialize, Deserialize};
 
 /// A 2D vector with basic mathematical operations
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct Vector2d {
     pub x: f32,
     pub y: f32,

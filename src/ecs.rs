@@ -2,7 +2,7 @@ use std::any::{Any, TypeId};
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::marker::PhantomData;
 use std::cell::{RefCell, Ref, RefMut};
-use crate::diffing::{DebugTracker, diff_components};
+use crate::diffing::{DebugTracker, diff_components, WorldState, deserialize_component, get_type_id_for_name};
 
 /// Mut<T> wrapper to explicitly mark components that should be accessed mutably
 pub struct Mut<T> {
@@ -68,26 +68,26 @@ pub trait Component: Any {
 }
 
 /// Storage for a specific component type using RefCell for interior mutability
-struct ComponentPool {
+pub struct ComponentPool {
     components: HashMap<Entity, RefCell<Box<dyn Component>>>,
 }
 
 impl ComponentPool {
-    fn new() -> Self {
+    pub fn new() -> Self {
         Self {
             components: HashMap::new(),
         }
     }
     
-    fn insert(&mut self, entity: Entity, component: Box<dyn Component>) {
+    pub fn insert(&mut self, entity: Entity, component: Box<dyn Component>) {
         self.components.insert(entity, RefCell::new(component));
     }
     
-    fn get(&self, entity: Entity) -> Option<Ref<Box<dyn Component>>> {
+    pub fn get(&self, entity: Entity) -> Option<Ref<Box<dyn Component>>> {
         self.components.get(&entity).map(|c| c.borrow())
     }
     
-    fn get_mut(&self, entity: Entity) -> Option<RefMut<Box<dyn Component>>> {
+    pub fn get_mut(&self, entity: Entity) -> Option<RefMut<Box<dyn Component>>> {
         self.components.get(&entity).map(|c| c.borrow_mut())
     }
     
@@ -95,7 +95,7 @@ impl ComponentPool {
         self.components.remove(&entity)
     }
     
-    fn contains(&self, entity: Entity) -> bool {
+    pub fn contains(&self, entity: Entity) -> bool {
         self.components.contains_key(&entity)
     }
     
@@ -1049,6 +1049,128 @@ impl World {
         let pool = self.component_pools.get(&type_id)?;
         let component = pool.get(entity)?;
         Some(component.clone_box())
+    }
+    
+    /// Get reference to entities (for diffing system access)
+    pub(crate) fn get_entities(&self) -> &Vec<Entity> {
+        &self.entities
+    }
+    
+    /// Get reference to component pools (for diffing system access)
+    pub(crate) fn get_component_pools(&self) -> &HashMap<TypeId, ComponentPool> {
+        &self.component_pools
+    }
+    
+    /// Clear all entities and components (for state restoration)
+    pub(crate) fn clear_world(&mut self) {
+        self.entities.clear();
+        self.component_pools.clear();
+        self.next_entity_id = 0;
+    }
+    
+    /// Set entities vector (for state restoration)
+    pub(crate) fn set_entities(&mut self, entities: Vec<Entity>) {
+        self.entities = entities;
+        if let Some(&max_entity) = self.entities.iter().max() {
+            self.next_entity_id = max_entity + 1;
+        }
+    }
+    
+    /// Get mutable access to component pools (for state restoration)
+    pub(crate) fn get_component_pools_mut(&mut self) -> &mut HashMap<TypeId, ComponentPool> {
+        &mut self.component_pools
+    }
+    
+    /// Capture the current world state in the debug tracker
+    pub fn capture_world_state(&mut self) {
+        let entities = self.entities.clone();
+        let component_pools = &self.component_pools;
+        self.debug_tracker.capture_world_state(&entities, component_pools);
+    }
+    
+    /// Restore world state to a specific frame
+    pub fn restore_world_state(&mut self, target_frame: u64) -> bool {
+        let state_option = self.debug_tracker.world_states.iter()
+            .find(|s| s.frame_number == target_frame)
+            .cloned();
+            
+        if let Some(state) = state_option {
+            return self.apply_world_state(&state);
+        }
+        false
+    }
+    
+    /// Apply a world state to the current world
+    fn apply_world_state(&mut self, state: &WorldState) -> bool {
+        // Clear current world state
+        self.clear_world();
+        
+        // Restore entities
+        self.set_entities(state.entities.clone());
+        
+        // Restore components
+        for (&entity, components) in &state.component_data {
+            for (type_name, serialized_data) in components {
+                if let Some(component) = deserialize_component(type_name, serialized_data) {
+                    let type_id = get_type_id_for_name(type_name);
+                    let pool = self.get_component_pools_mut()
+                        .entry(type_id)
+                        .or_insert_with(|| ComponentPool::new());
+                    pool.insert(entity, component);
+                }
+            }
+        }
+        
+        true
+    }
+    
+    /// Replay changes from recorded diffs up to a specific frame
+    pub fn replay_to_frame(&mut self, target_frame: u64) -> bool {
+        // Find the latest world state before or at target frame
+        let base_state_option = self.debug_tracker.world_states.iter()
+            .filter(|s| s.frame_number <= target_frame)
+            .max_by_key(|s| s.frame_number)
+            .cloned();
+        
+        // Clone the diff history to avoid borrow issues
+        let diff_history = self.debug_tracker.diff_history.clone();
+            
+        if let Some(state) = base_state_option {
+            // Restore to base state
+            if !self.apply_world_state(&state) {
+                return false;
+            }
+            
+            // Apply diffs from base state to target frame
+            for record in &diff_history {
+                if record.frame_number > state.frame_number && record.frame_number <= target_frame {
+                    self.apply_system_diff_record(record);
+                }
+            }
+            
+            return true;
+        }
+        
+        false
+    }
+    
+    /// Apply a single system diff record to the world
+    fn apply_system_diff_record(&mut self, record: &crate::diffing::SystemDiffRecord) {
+        for component_diff in &record.component_diffs {
+            self.apply_component_diff(component_diff);
+        }
+    }
+    
+    /// Apply a component diff to the world
+    fn apply_component_diff(&mut self, diff: &crate::diffing::ComponentDiff) {
+        let type_id = crate::diffing::get_type_id_for_name(&diff.component_type);
+        
+        // Get the component and apply the diff
+        if let Some(pool) = self.get_component_pools().get(&type_id) {
+            if let Some(mut component_ref) = pool.get_mut(diff.entity_id) {
+                crate::diffing::apply_diff_to_component(component_ref.as_mut(), &diff.changes, type_id);
+            }
+        }
     }
     
     /// Run a single system with debug tracking

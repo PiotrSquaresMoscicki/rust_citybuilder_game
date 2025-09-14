@@ -1,8 +1,9 @@
 use crate::ecs::{Component, World, EntityIterator, Mut};
 use std::any::Any;
+use serde::{Serialize, Deserialize};
 
 /// Position component for entities
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Position {
     pub x: f32,
     pub y: f32,
@@ -42,7 +43,7 @@ impl Component for Position {
 }
 
 /// Velocity component for entities
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Velocity {
     pub dx: f32,
     pub dy: f32,
@@ -82,7 +83,7 @@ impl Component for Velocity {
 }
 
 /// Health component for entities
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Health {
     pub current: i32,
     pub max: i32,
