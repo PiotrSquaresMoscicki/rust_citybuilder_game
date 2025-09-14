@@ -150,8 +150,12 @@ pub trait SystemMarker {
     fn name() -> &'static str;
 }
 
-/// Entity Iterator trait alias matching the problem statement  
-pub type EntIt<A1, A2> = EntIt2<A1, A2>;
+/// Entity Iterator trait for working with variable number of components
+pub trait EntIt {
+    type Item;
+    
+    fn next(&mut self) -> Option<Self::Item>;
+}
 
 /// Entity iterator for 1 component
 pub struct EntIt1<A1> {
@@ -177,11 +181,26 @@ pub struct EntIt3<A1, A2, A3> {
     _phantom: PhantomData<(A1, A2, A3)>,
 }
 
+/// Implementation for tuple iterators (1 element)
+impl<A1: SystemMarker> SystemDependencies for (EntIt1<A1>,) {
+    fn get_dependency_names() -> Vec<&'static str> {
+        vec![]
+    }
+}
+
+/// Implementation for tuple iterators (2 elements)
+impl<A1: SystemMarker, A2: SystemMarker> SystemDependencies for (EntIt1<A1>, EntIt1<A2>) {
+    fn get_dependency_names() -> Vec<&'static str> {
+        vec![]
+    }
+}
+
 /// World contains entities, components, and systems
 pub struct World {
     next_entity_id: Entity,
     entities: Vec<Entity>,
     component_pools: HashMap<TypeId, ComponentPool>,
+    systems: Vec<Box<dyn System<Dependencies = (), Iterators = ()>>>,
 }
 
 impl World {
@@ -191,6 +210,7 @@ impl World {
             next_entity_id: 0,
             entities: Vec::new(),
             component_pools: HashMap::new(),
+            systems: Vec::new(),
         }
     }
     
@@ -274,18 +294,6 @@ impl World {
         result
     }
     
-    /// Create iterator for entities with two specific component types (main API)
-    pub fn iter_entities<A1: AccessMode, A2: AccessMode>(&self) -> EntIt<A1, A2> {
-        let type_ids = vec![A1::component_type_id(), A2::component_type_id()];
-        let entities = self.entities_with_components(&type_ids);
-        EntIt2 {
-            world: self as *const World,
-            entities,
-            index: 0,
-            _phantom: PhantomData,
-        }
-    }
-    
     /// Create iterator for entities with specific component type
     pub fn iter_entities_1<A1: AccessMode>(&self) -> EntIt1<A1> {
         let type_ids = vec![A1::component_type_id()];
@@ -321,13 +329,22 @@ impl World {
             _phantom: PhantomData,
         }
     }
+    
+    /// Run all systems
+    pub fn update(&mut self) {
+        // For now, just run systems in order they were added
+        // Later we'll implement dependency-based ordering
+        for system in &mut self.systems {
+            system.update(());
+        }
+    }
 }
 
-// Basic implementations for the iterators
+// Basic implementations for the iterators - simplified for now
 // These return entity IDs and components can be accessed via world reference
 
 impl<A1: AccessMode> Iterator for EntIt1<A1> {
-    type Item = Entity;
+    type Item = Entity; // Return entity ID for now - user can access components via world
     
     fn next(&mut self) -> Option<Self::Item> {
         if self.index < self.entities.len() {
@@ -341,7 +358,7 @@ impl<A1: AccessMode> Iterator for EntIt1<A1> {
 }
 
 impl<A1: AccessMode, A2: AccessMode> Iterator for EntIt2<A1, A2> {
-    type Item = Entity;
+    type Item = Entity; // Return entity ID for now - user can access components via world
     
     fn next(&mut self) -> Option<Self::Item> {
         if self.index < self.entities.len() {
@@ -355,7 +372,7 @@ impl<A1: AccessMode, A2: AccessMode> Iterator for EntIt2<A1, A2> {
 }
 
 impl<A1: AccessMode, A2: AccessMode, A3: AccessMode> Iterator for EntIt3<A1, A2, A3> {
-    type Item = Entity;
+    type Item = Entity; // Return entity ID for now - user can access components via world
     
     fn next(&mut self) -> Option<Self::Item> {
         if self.index < self.entities.len() {

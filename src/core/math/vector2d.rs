@@ -128,7 +128,8 @@ impl Neg for Vector2d {
 }
 
 // Make Vector2d diffable
-crate::diffable!(Vector2d { x, y });
+// Temporarily disabled diffable macro
+// crate::diffable!(Vector2d { x, y });
 
 #[cfg(test)]
 mod tests {

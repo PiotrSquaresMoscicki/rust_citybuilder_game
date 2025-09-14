@@ -1,6 +1,6 @@
 use crate::ecs::{World, EntityIterator, Mut, System, SystemTypeId};
 use crate::core::input_action::InputComponent;
-use crate::input::{get_global_input_manager, poll_global_input_events, Key, MouseButton};
+use super::super::input::{get_global_input_manager, poll_global_input_events, Key, MouseButton};
 use std::any::TypeId;
 use std::error::Error;
 
