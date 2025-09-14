@@ -71,7 +71,7 @@ fn main() {
             }
             "math" => {
                 println!("Demonstrating the Math Library...\n");
-                // demonstrate_math_library();
+                // math_demo::demonstrate_math_library();
             }
             "time" => {
                 println!("Demonstrating the Time Management System...\n");

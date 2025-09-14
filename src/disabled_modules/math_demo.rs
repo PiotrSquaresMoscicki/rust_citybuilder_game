@@ -1,4 +1,4 @@
-use crate::ecs::{World, Entity};
+use crate::ecs_clean::{World, Entity};
 use crate::core::math::{Vector2d, Angle2d, Transform2dComponent};
 
 /// Demonstrates the math library usage with the ECS system
