@@ -10,6 +10,7 @@ mod multiple_iterator_systems_test;
 mod core;
 mod math_demo;
 mod rendering;
+mod time_demo;
 
 #[cfg(test)]
 mod diffing_test;
@@ -20,6 +21,7 @@ use diffing_demo::demonstrate_diffing_system;
 use multiple_iterators_test::demonstrate_multiple_iterators;
 use multiple_iterator_systems_test::demonstrate_multiple_iterator_systems;
 use math_demo::demonstrate_math_library;
+use time_demo::run_time_demo;
 use http_server::start_hello_world_server;
 use enhanced_http_server::demonstrate_rendering_with_web_client;
 use rendering::{WebServiceManager, WebClientRenderingDevice, initialize_global_rendering_manager, render_global_grid};
@@ -66,6 +68,10 @@ fn main() {
             "math" => {
                 println!("Demonstrating the Math Library...\n");
                 demonstrate_math_library();
+            }
+            "time" => {
+                println!("Demonstrating the Time Management System...\n");
+                run_time_demo();
             }
             "render" => {
                 println!("Demonstrating the Rendering System...\n");
@@ -117,6 +123,7 @@ fn print_help() {
     println!("    multi-systems       Demonstrate Multiple Iterator Systems (new API)");
     println!("    diff                Demonstrate ECS Diffing System");
     println!("    math                Demonstrate Math Library (Vector2d, Angle2d, Transform2d)");
+    println!("    time                Demonstrate Time Management System");
     println!("    render              Demonstrate Rendering System with Web Client");
     println!("    web-render          Start Interactive Web Rendering Client");
     println!("    help                Show this help message");
@@ -129,6 +136,7 @@ fn print_help() {
     println!("    cargo run multi              # Run multiple iterators demonstration");
     println!("    cargo run diff               # Run ECS diffing demonstration");
     println!("    cargo run math               # Run math library demonstration");
+    println!("    cargo run time               # Run time management demonstration");
     println!("    cargo run render             # Run rendering system demonstration");
     println!("    cargo run web-render         # Start interactive web rendering client");
     println!("");
