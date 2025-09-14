@@ -103,7 +103,7 @@ pub fn demonstrate_multiple_iterator_systems() {
     
     println!("\n=== Running with Debug Tracking ===");
     world.enable_debug_tracking();
-    world.run_iterator_systems_with_debug();
+    world.run_systems_with_debug();
     
     let debug_history = world.get_debug_history();
     println!("Debug history:\n{}", debug_history);
@@ -178,7 +178,7 @@ mod tests {
         
         // Enable debug tracking to test the component type detection
         world.enable_debug_tracking();
-        world.run_iterator_systems_with_debug();
+        world.run_systems_with_debug();
         
         // Should not panic and should track changes if any were made
         let history = world.get_debug_history();

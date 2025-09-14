@@ -11,6 +11,7 @@ mod core;
 mod math_demo;
 mod rendering;
 mod time_demo;
+mod system_object_example;
 
 #[cfg(test)]
 mod diffing_test;
@@ -25,6 +26,7 @@ use time_demo::run_time_demo;
 use http_server::start_hello_world_server;
 use enhanced_http_server::demonstrate_rendering_with_web_client;
 use rendering::{WebServiceManager, WebClientRenderingDevice, initialize_global_rendering_manager, render_global_grid};
+use system_object_example::demonstrate_system_objects;
 use std::env;
 
 fn main() {
@@ -72,6 +74,10 @@ fn main() {
             "time" => {
                 println!("Demonstrating the Time Management System...\n");
                 run_time_demo();
+            }
+            "systems" => {
+                println!("Demonstrating the New System Objects...\n");
+                demonstrate_system_objects();
             }
             "render" => {
                 println!("Demonstrating the Rendering System...\n");
@@ -124,6 +130,7 @@ fn print_help() {
     println!("    diff                Demonstrate ECS Diffing System");
     println!("    math                Demonstrate Math Library (Vector2d, Angle2d, Transform2d)");
     println!("    time                Demonstrate Time Management System");
+    println!("    systems             Demonstrate New System Objects (object-based systems)");
     println!("    render              Demonstrate Rendering System with Web Client");
     println!("    web-render          Start Interactive Web Rendering Client");
     println!("    help                Show this help message");
@@ -137,6 +144,7 @@ fn print_help() {
     println!("    cargo run diff               # Run ECS diffing demonstration");
     println!("    cargo run math               # Run math library demonstration");
     println!("    cargo run time               # Run time management demonstration");
+    println!("    cargo run systems            # Run new system objects demonstration");
     println!("    cargo run render             # Run rendering system demonstration");
     println!("    cargo run web-render         # Start interactive web rendering client");
     println!("");

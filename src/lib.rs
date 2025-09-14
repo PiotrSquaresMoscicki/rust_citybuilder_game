@@ -7,6 +7,7 @@ pub mod input;
 pub mod web_render_sample;
 pub mod time_demo;
 pub mod dependency_example;
+pub mod system_object_example;
 
 #[cfg(test)]
 mod main_test;
