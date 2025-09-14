@@ -34,3 +34,6 @@ mod system_dependency_test;
 
 #[cfg(test)]
 mod hierarchy_demo;
+
+#[cfg(test)]
+mod camera_refactoring_demo;
