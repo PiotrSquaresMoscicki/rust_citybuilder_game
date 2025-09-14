@@ -5,6 +5,7 @@ pub mod core;
 pub mod rendering;
 pub mod input;
 pub mod web_render_sample;
+pub mod time_demo;
 
 #[cfg(test)]
 mod main_test;
