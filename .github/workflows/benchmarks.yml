@@ -1,0 +1,152 @@
+name: Debug Tracking Benchmarks
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+    inputs:
+      custom_entity_count:
+        description: 'Custom entity count for benchmarks (optional)'
+        required: false
+        default: ''
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Install Rust
+      uses: actions-rs/toolchain@v1
+      with:
+        profile: minimal
+        toolchain: stable
+        override: true
+        
+    - name: Cache dependencies
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          target
+        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-cargo-
+          
+    - name: Install criterion
+      run: cargo install cargo-criterion
+      
+    - name: Run debug tracking benchmarks
+      run: |
+        echo "Running benchmarks comparing systems with and without debug tracking..."
+        cargo bench --bench debug_tracking_benchmarks -- --output-format html
+        
+    - name: Upload benchmark results
+      uses: actions/upload-artifact@v3
+      with:
+        name: benchmark-results
+        path: |
+          target/criterion/
+        retention-days: 30
+        
+    - name: Generate benchmark summary
+      run: |
+        echo "# Debug Tracking Performance Benchmarks" > benchmark_summary.md
+        echo "" >> benchmark_summary.md
+        echo "This report compares the performance of ECS systems running with and without debug tracking enabled." >> benchmark_summary.md
+        echo "" >> benchmark_summary.md
+        echo "## Test Configuration" >> benchmark_summary.md
+        echo "- Entity counts tested: 100, 500, 1000" >> benchmark_summary.md
+        echo "- Systems tested: velocity modification, health modification, combined systems" >> benchmark_summary.md
+        echo "- Debug tracking: component change recording and diffing" >> benchmark_summary.md
+        echo "" >> benchmark_summary.md
+        echo "## Results" >> benchmark_summary.md
+        echo "Detailed benchmark results are available in the uploaded artifacts." >> benchmark_summary.md
+        echo "- **No Debug Tracking**: Systems run with minimal overhead" >> benchmark_summary.md
+        echo "- **With Debug Tracking**: Systems include component change recording" >> benchmark_summary.md
+        echo "" >> benchmark_summary.md
+        echo "The benchmarks help identify the performance impact of enabling debug tracking features." >> benchmark_summary.md
+        
+    - name: Upload benchmark summary
+      uses: actions/upload-artifact@v3
+      with:
+        name: benchmark-summary
+        path: benchmark_summary.md
+        retention-days: 30
+        
+    - name: Comment benchmark results (PR only)
+      if: github.event_name == 'pull_request'
+      uses: actions/github-script@v6
+      with:
+        script: |
+          const fs = require('fs');
+          
+          // Create a comment with benchmark information
+          const comment = `## 🚀 Debug Tracking Benchmarks
+          
+          Benchmarks have been run comparing ECS systems with and without debug tracking.
+          
+          **Test Configuration:**
+          - Entity counts: 100, 500, 1000
+          - Systems: velocity modification, health modification, combined
+          - Comparison: with vs without debug tracking
+          
+          📊 Detailed results are available in the workflow artifacts.
+          
+          This helps measure the performance impact of the debug tracking feature.`;
+          
+          github.rest.issues.createComment({
+            issue_number: context.issue.number,
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            body: comment
+          });
+
+  benchmark-release:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Install Rust
+      uses: actions-rs/toolchain@v1
+      with:
+        profile: minimal
+        toolchain: stable
+        override: true
+        
+    - name: Cache dependencies
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          target
+        key: ${{ runner.os }}-cargo-release-${{ hashFiles('**/Cargo.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-cargo-release-
+          ${{ runner.os }}-cargo-
+          
+    - name: Install criterion
+      run: cargo install cargo-criterion
+      
+    - name: Run release benchmarks
+      run: |
+        echo "Running optimized release benchmarks..."
+        cargo bench --bench debug_tracking_benchmarks --release -- --output-format html
+        
+    - name: Upload release benchmark results
+      uses: actions/upload-artifact@v3
+      with:
+        name: release-benchmark-results
+        path: |
+          target/criterion/
+        retention-days: 90
