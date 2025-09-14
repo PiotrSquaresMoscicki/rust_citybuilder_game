@@ -1,4 +1,6 @@
 pub mod ecs;
+pub mod ecs_new;
+pub mod ecs_example;
 pub mod examples;
 pub mod diffing;
 pub mod core;

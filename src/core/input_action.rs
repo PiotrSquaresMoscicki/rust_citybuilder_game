@@ -1,7 +1,7 @@
 use std::any::Any;
 use std::collections::HashMap;
 use crate::ecs::Component;
-use crate::input::{Key, MouseButton, InputEvent};
+use super::super::input::{Key, MouseButton, InputEvent};
 use crate::core::math::Vector2d;
 use serde::{Deserialize, Serialize};
 
