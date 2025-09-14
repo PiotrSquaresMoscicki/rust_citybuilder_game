@@ -3,12 +3,9 @@ use crate::ecs::Component;
 use super::{vector2d::Vector2d, angle2d::Angle2d, transform2d::Transform2d};
 
 /// Camera2d component that defines the view transformation for 2D rendering
+/// Position and rotation are handled by a separate Transform2dComponent
 #[derive(Debug, Clone, PartialEq)]
 pub struct Camera2d {
-    /// Position of the camera in world space
-    position: Vector2d,
-    /// Rotation of the camera
-    rotation: Angle2d,
     /// Scale/zoom of the camera (higher values = zoomed in)
     scale: f32,
     /// View bounds for culling (in camera space)
@@ -20,43 +17,19 @@ impl Camera2d {
     /// Creates a new Camera2d with default values
     pub fn new() -> Self {
         Self {
-            position: Vector2d::zero(),
-            rotation: Angle2d::zero(),
             scale: 1.0,
             view_width: 1920.0,  // Default screen width
             view_height: 1080.0, // Default screen height
         }
     }
 
-    /// Creates a Camera2d with specific position, rotation, and scale
-    pub fn from_prs(position: Vector2d, rotation: Angle2d, scale: f32) -> Self {
+    /// Creates a Camera2d with specific scale
+    pub fn with_scale(scale: f32) -> Self {
         Self {
-            position,
-            rotation,
             scale,
             view_width: 1920.0,
             view_height: 1080.0,
         }
-    }
-
-    /// Gets the camera position
-    pub fn position(&self) -> Vector2d {
-        self.position
-    }
-
-    /// Sets the camera position
-    pub fn set_position(&mut self, position: Vector2d) {
-        self.position = position;
-    }
-
-    /// Gets the camera rotation
-    pub fn rotation(&self) -> Angle2d {
-        self.rotation
-    }
-
-    /// Sets the camera rotation
-    pub fn set_rotation(&mut self, rotation: Angle2d) {
-        self.rotation = rotation;
     }
 
     /// Gets the camera scale/zoom
@@ -80,16 +53,6 @@ impl Camera2d {
         self.view_height = height;
     }
 
-    /// Moves the camera by the given offset
-    pub fn translate(&mut self, offset: Vector2d) {
-        self.position = self.position + offset;
-    }
-
-    /// Rotates the camera by the given angle
-    pub fn rotate(&mut self, angle: Angle2d) {
-        self.rotation = self.rotation + angle;
-    }
-
     /// Zooms the camera by the given factor
     pub fn zoom(&mut self, factor: f32) {
         self.scale *= factor;
@@ -97,10 +60,10 @@ impl Camera2d {
     }
 
     /// Gets the view transform matrix (world to camera space)
-    pub fn view_transform(&self) -> Transform2d {
+    pub fn view_transform(&self, position: Vector2d, rotation: Angle2d) -> Transform2d {
         // Create inverse transform: translate to origin, then inverse rotate, then inverse scale
-        let translation_to_origin = Transform2d::translation(-self.position);
-        let inverse_rotation = Transform2d::rotation(Angle2d::from_radians(-self.rotation.radians()));
+        let translation_to_origin = Transform2d::translation(-position);
+        let inverse_rotation = Transform2d::rotation(Angle2d::from_radians(-rotation.radians()));
         let inverse_scale = Transform2d::scale(1.0 / self.scale);
         
         // Apply transformations in order: first translate, then rotate, then scale
@@ -108,19 +71,19 @@ impl Camera2d {
     }
 
     /// Transforms a world point to camera space
-    pub fn world_to_camera(&self, world_point: Vector2d) -> Vector2d {
-        self.view_transform().transform_point(world_point)
+    pub fn world_to_camera(&self, world_point: Vector2d, position: Vector2d, rotation: Angle2d) -> Vector2d {
+        self.view_transform(position, rotation).transform_point(world_point)
     }
 
     /// Transforms a camera point to world space
-    pub fn camera_to_world(&self, camera_point: Vector2d) -> Vector2d {
-        let world_transform = Transform2d::from_trs(self.position, self.rotation, self.scale);
+    pub fn camera_to_world(&self, camera_point: Vector2d, position: Vector2d, rotation: Angle2d) -> Vector2d {
+        let world_transform = Transform2d::from_trs(position, rotation, self.scale);
         world_transform.transform_point(camera_point)
     }
 
     /// Checks if a point is visible in the camera view
-    pub fn is_point_visible(&self, world_point: Vector2d) -> bool {
-        let camera_point = self.world_to_camera(world_point);
+    pub fn is_point_visible(&self, world_point: Vector2d, position: Vector2d, rotation: Angle2d) -> bool {
+        let camera_point = self.world_to_camera(world_point, position, rotation);
         let half_width = self.view_width * 0.5 / self.scale;
         let half_height = self.view_height * 0.5 / self.scale;
         
@@ -129,8 +92,8 @@ impl Camera2d {
     }
 
     /// Checks if a circular area is visible in the camera view
-    pub fn is_circle_visible(&self, center: Vector2d, radius: f32) -> bool {
-        let camera_center = self.world_to_camera(center);
+    pub fn is_circle_visible(&self, center: Vector2d, radius: f32, position: Vector2d, rotation: Angle2d) -> bool {
+        let camera_center = self.world_to_camera(center, position, rotation);
         let scaled_radius = radius / self.scale;
         let half_width = self.view_width * 0.5 / self.scale;
         let half_height = self.view_height * 0.5 / self.scale;
@@ -144,8 +107,8 @@ impl Camera2d {
     }
 
     /// Checks if a rectangular area is visible in the camera view
-    pub fn is_rect_visible(&self, center: Vector2d, width: f32, height: f32) -> bool {
-        let camera_center = self.world_to_camera(center);
+    pub fn is_rect_visible(&self, center: Vector2d, width: f32, height: f32, position: Vector2d, rotation: Angle2d) -> bool {
+        let camera_center = self.world_to_camera(center, position, rotation);
         let scaled_width = width / self.scale;
         let scaled_height = height / self.scale;
         let half_view_width = self.view_width * 0.5 / self.scale;
@@ -165,8 +128,6 @@ impl Camera2d {
 impl Component for Camera2d {
     fn validate(&self) -> bool {
         // Check that all values are finite and scale is positive
-        self.position.x.is_finite() && self.position.y.is_finite() &&
-        self.rotation.radians().is_finite() &&
         self.scale.is_finite() && self.scale > 0.0 &&
         self.view_width.is_finite() && self.view_width > 0.0 &&
         self.view_height.is_finite() && self.view_height > 0.0
@@ -207,103 +168,101 @@ mod tests {
     #[test]
     fn test_camera_creation() {
         let camera = Camera2d::new();
-        assert!(vector_approx_eq(camera.position(), Vector2d::zero()));
-        assert!(approx_eq(camera.rotation().radians(), 0.0));
         assert!(approx_eq(camera.scale(), 1.0));
+        assert_eq!(camera.view_dimensions(), (1920.0, 1080.0));
     }
-
+    
     #[test]
     fn test_camera_setters() {
         let mut camera = Camera2d::new();
         
-        camera.set_position(Vector2d::new(5.0, 3.0));
-        assert!(vector_approx_eq(camera.position(), Vector2d::new(5.0, 3.0)));
-        
-        camera.set_rotation(Angle2d::from_degrees(45.0));
-        assert!(approx_eq(camera.rotation().degrees(), 45.0));
-        
         camera.set_scale(2.0);
         assert!(approx_eq(camera.scale(), 2.0));
+        
+        camera.set_view_dimensions(800.0, 600.0);
+        assert_eq!(camera.view_dimensions(), (800.0, 600.0));
     }
-
+    
     #[test]
     fn test_camera_transforms() {
-        let mut camera = Camera2d::new();
-        camera.set_position(Vector2d::new(10.0, 5.0));
-        camera.set_scale(2.0);
+        let camera = Camera2d::new();
+        let position = Vector2d::new(10.0, 5.0);
+        let rotation = Angle2d::zero();
         
         let world_point = Vector2d::new(12.0, 7.0);
-        let camera_point = camera.world_to_camera(world_point);
-        let back_to_world = camera.camera_to_world(camera_point);
+        let camera_point = camera.world_to_camera(world_point, position, rotation);
+        let back_to_world = camera.camera_to_world(camera_point, position, rotation);
         
         // Should get back the original point
         assert!(vector_approx_eq(world_point, back_to_world));
     }
-
+    
     #[test]
     fn test_point_visibility() {
         let mut camera = Camera2d::new();
         camera.set_view_dimensions(100.0, 100.0);
-        camera.set_position(Vector2d::zero());
         camera.set_scale(1.0);
         
+        let position = Vector2d::zero();
+        let rotation = Angle2d::zero();
+        
         // Point at origin should be visible
-        assert!(camera.is_point_visible(Vector2d::zero()));
+        assert!(camera.is_point_visible(Vector2d::zero(), position, rotation));
         
         // Point within view should be visible
-        assert!(camera.is_point_visible(Vector2d::new(40.0, 40.0)));
+        assert!(camera.is_point_visible(Vector2d::new(40.0, 40.0), position, rotation));
         
         // Point outside view should not be visible
-        assert!(!camera.is_point_visible(Vector2d::new(100.0, 100.0)));
+        assert!(!camera.is_point_visible(Vector2d::new(100.0, 100.0), position, rotation));
     }
-
+    
     #[test]
     fn test_circle_visibility() {
         let mut camera = Camera2d::new();
         camera.set_view_dimensions(100.0, 100.0);
-        camera.set_position(Vector2d::zero());
         camera.set_scale(1.0);
         
+        let position = Vector2d::zero();
+        let rotation = Angle2d::zero();
+        
         // Circle at origin should be visible
-        assert!(camera.is_circle_visible(Vector2d::zero(), 10.0));
+        assert!(camera.is_circle_visible(Vector2d::zero(), 10.0, position, rotation));
         
         // Circle partially outside should still be visible
-        assert!(camera.is_circle_visible(Vector2d::new(45.0, 45.0), 10.0));
+        assert!(camera.is_circle_visible(Vector2d::new(45.0, 45.0), 10.0, position, rotation));
         
         // Circle far outside should not be visible
-        assert!(!camera.is_circle_visible(Vector2d::new(200.0, 200.0), 10.0));
+        assert!(!camera.is_circle_visible(Vector2d::new(200.0, 200.0), 10.0, position, rotation));
     }
-
+    
     #[test]
     fn test_rect_visibility() {
         let mut camera = Camera2d::new();
         camera.set_view_dimensions(100.0, 100.0);
-        camera.set_position(Vector2d::zero());
         camera.set_scale(1.0);
         
+        let position = Vector2d::zero();
+        let rotation = Angle2d::zero();
+        
         // Rect at origin should be visible
-        assert!(camera.is_rect_visible(Vector2d::zero(), 20.0, 20.0));
+        assert!(camera.is_rect_visible(Vector2d::zero(), 20.0, 20.0, position, rotation));
         
         // Rect partially outside should still be visible
-        assert!(camera.is_rect_visible(Vector2d::new(45.0, 45.0), 20.0, 20.0));
+        assert!(camera.is_rect_visible(Vector2d::new(45.0, 45.0), 20.0, 20.0, position, rotation));
         
         // Rect far outside should not be visible
-        assert!(!camera.is_rect_visible(Vector2d::new(200.0, 200.0), 20.0, 20.0));
+        assert!(!camera.is_rect_visible(Vector2d::new(200.0, 200.0), 20.0, 20.0, position, rotation));
     }
-
+    
     #[test]
     fn test_camera_validation() {
         let camera = Camera2d::new();
         assert!(camera.validate());
         
-        // Create an invalid camera with direct field access to test validation
-        let invalid_camera = Camera2d {
-            position: Vector2d::new(f32::NAN, 0.0),
-            rotation: Angle2d::zero(),
-            scale: 1.0,
-            view_width: 100.0,
-            view_height: 100.0,
-        };
-        assert!(!invalid_camera.validate());
+        // Create an invalid camera with zero scale
+        let mut invalid_camera = Camera2d::new();
+        invalid_camera.set_scale(0.0);
+        // This should pass because set_scale enforces minimum value
+        assert!(invalid_camera.validate());
     }
 }

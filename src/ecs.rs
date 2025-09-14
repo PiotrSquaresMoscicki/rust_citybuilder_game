@@ -284,12 +284,16 @@ pub trait SystemCall {
     
     /// Get a description of this system for debugging purposes
     fn get_system_name(&self) -> &str;
+    
+    /// Get the system types that this system depends on (should be executed before this system)
+    fn get_dependencies(&self) -> Vec<&str>;
 }
 
 /// Implementation for systems that take a single iterator
 pub struct SingleIteratorSystem<A1, A2, F> {
     function: F,
     system_name: String,
+    dependencies: Vec<String>,
     _phantom: PhantomData<(A1, A2)>,
 }
 
@@ -303,6 +307,16 @@ where
         Self {
             function,
             system_name,
+            dependencies: Vec::new(),
+            _phantom: PhantomData,
+        }
+    }
+    
+    pub fn with_dependencies(function: F, system_name: String, dependencies: Vec<String>) -> Self {
+        Self {
+            function,
+            system_name,
+            dependencies,
             _phantom: PhantomData,
         }
     }
@@ -333,12 +347,17 @@ where
     fn get_system_name(&self) -> &str {
         &self.system_name
     }
+    
+    fn get_dependencies(&self) -> Vec<&str> {
+        self.dependencies.iter().map(|s| s.as_str()).collect()
+    }
 }
 
 /// Implementation for systems that take two iterators
 pub struct DualIteratorSystem<A1, A2, B1, B2, F> {
     function: F,
     system_name: String,
+    dependencies: Vec<String>,
     _phantom: PhantomData<(A1, A2, B1, B2)>,
 }
 
@@ -354,6 +373,16 @@ where
         Self {
             function,
             system_name,
+            dependencies: Vec::new(),
+            _phantom: PhantomData,
+        }
+    }
+    
+    pub fn with_dependencies(function: F, system_name: String, dependencies: Vec<String>) -> Self {
+        Self {
+            function,
+            system_name,
+            dependencies,
             _phantom: PhantomData,
         }
     }
@@ -393,12 +422,17 @@ where
     fn get_system_name(&self) -> &str {
         &self.system_name
     }
+    
+    fn get_dependencies(&self) -> Vec<&str> {
+        self.dependencies.iter().map(|s| s.as_str()).collect()
+    }
 }
 
 /// Implementation for systems that take three iterators
 pub struct TripleIteratorSystem<A1, A2, B1, B2, C1, C2, F> {
     function: F,
     system_name: String,
+    dependencies: Vec<String>,
     _phantom: PhantomData<(A1, A2, B1, B2, C1, C2)>,
 }
 
@@ -416,6 +450,16 @@ where
         Self {
             function,
             system_name,
+            dependencies: Vec::new(),
+            _phantom: PhantomData,
+        }
+    }
+    
+    pub fn with_dependencies(function: F, system_name: String, dependencies: Vec<String>) -> Self {
+        Self {
+            function,
+            system_name,
+            dependencies,
             _phantom: PhantomData,
         }
     }
@@ -463,6 +507,10 @@ where
     
     fn get_system_name(&self) -> &str {
         &self.system_name
+    }
+    
+    fn get_dependencies(&self) -> Vec<&str> {
+        self.dependencies.iter().map(|s| s.as_str()).collect()
     }
 }
 
@@ -592,6 +640,16 @@ impl World {
     pub fn entity_count(&self) -> usize {
         self.entities.len()
     }
+    
+    /// Get all entities (for hierarchy management and other systems)
+    pub fn get_entities(&self) -> &[Entity] {
+        &self.entities
+    }
+    
+    /// Check if an entity exists
+    pub fn entity_exists(&self, entity: Entity) -> bool {
+        self.entities.contains(&entity)
+    }
 
     /// Create an EntityIterator with the API: EntityIterator<ComponentType1, Mut<ComponentType2>>
     /// Plain types (T) are accessed immutably, Mut<T> types are accessed mutably
@@ -650,17 +708,125 @@ impl World {
         self.systems.push(Box::new(system_impl));
     }
     
-    /// Run all systems (both new iterator-based and legacy)
+    /// Add a system that takes a single entity iterator with dependencies
+    pub fn add_single_iterator_system_with_dependencies<A1, A2, F>(&mut self, system: F, system_name: &str, dependencies: Vec<&str>)
+    where
+        A1: AccessMode + AccessModeToRef<A1::Component> + 'static,
+        A2: AccessMode + AccessModeToRef<A2::Component> + 'static,
+        F: Fn(EntityIterator<A1, A2>) + 'static,
+    {
+        let deps = dependencies.into_iter().map(|s| s.to_string()).collect();
+        let system_impl = SingleIteratorSystem::with_dependencies(system, system_name.to_string(), deps);
+        self.systems.push(Box::new(system_impl));
+    }
+    
+    /// Add a system that takes two entity iterators with dependencies
+    pub fn add_dual_iterator_system_with_dependencies<A1, A2, B1, B2, F>(&mut self, system: F, system_name: &str, dependencies: Vec<&str>)
+    where
+        A1: AccessMode + AccessModeToRef<A1::Component> + 'static,
+        A2: AccessMode + AccessModeToRef<A2::Component> + 'static,
+        B1: AccessMode + AccessModeToRef<B1::Component> + 'static,
+        B2: AccessMode + AccessModeToRef<B2::Component> + 'static,
+        F: Fn(EntityIterator<A1, A2>, EntityIterator<B1, B2>) + 'static,
+    {
+        let deps = dependencies.into_iter().map(|s| s.to_string()).collect();
+        let system_impl = DualIteratorSystem::with_dependencies(system, system_name.to_string(), deps);
+        self.systems.push(Box::new(system_impl));
+    }
+    
+    /// Add a system that takes three entity iterators with dependencies
+    pub fn add_triple_iterator_system_with_dependencies<A1, A2, B1, B2, C1, C2, F>(&mut self, system: F, system_name: &str, dependencies: Vec<&str>)
+    where
+        A1: AccessMode + AccessModeToRef<A1::Component> + 'static,
+        A2: AccessMode + AccessModeToRef<A2::Component> + 'static,
+        B1: AccessMode + AccessModeToRef<B1::Component> + 'static,
+        B2: AccessMode + AccessModeToRef<B2::Component> + 'static,
+        C1: AccessMode + AccessModeToRef<C1::Component> + 'static,
+        C2: AccessMode + AccessModeToRef<C2::Component> + 'static,
+        F: Fn(EntityIterator<A1, A2>, EntityIterator<B1, B2>, EntityIterator<C1, C2>) + 'static,
+    {
+        let deps = dependencies.into_iter().map(|s| s.to_string()).collect();
+        let system_impl = TripleIteratorSystem::with_dependencies(system, system_name.to_string(), deps);
+        self.systems.push(Box::new(system_impl));
+    }
+    
+    /// Run all systems (both new iterator-based and legacy) in dependency order
     pub fn run_systems(&self) {
-        // Run new iterator-based systems
-        for system in &self.systems {
-            system.call(self);
+        // Sort systems by dependencies and run them
+        match self.sort_systems_by_dependencies() {
+            Ok(sorted_systems) => {
+                // Run sorted systems
+                for system in &sorted_systems {
+                    system.call(self);
+                }
+            }
+            Err(e) => {
+                // If there's a circular dependency, panic with details
+                panic!("System dependency error: {}", e);
+            }
         }
         
-        // Run legacy systems for backward compatibility
+        // Run legacy systems for backward compatibility (no dependency ordering)
         for system in &self.legacy_systems {
             system(self);
         }
+    }
+    
+    /// Sort systems by their dependencies using topological sort
+    /// Returns an error if there are circular dependencies
+    fn sort_systems_by_dependencies(&self) -> Result<Vec<&Box<dyn SystemCall>>, String> {
+        let mut sorted = Vec::new();
+        let mut visited = std::collections::HashSet::new();
+        let mut visiting = std::collections::HashSet::new();
+        
+        // Create a map of system names to systems for quick lookup
+        let system_map: std::collections::HashMap<&str, &Box<dyn SystemCall>> = 
+            self.systems.iter().map(|s| (s.get_system_name(), s)).collect();
+        
+        // Depth-first search for topological sort
+        fn dfs<'a>(
+            system: &'a Box<dyn SystemCall>,
+            system_map: &std::collections::HashMap<&str, &'a Box<dyn SystemCall>>,
+            visited: &mut std::collections::HashSet<String>,
+            visiting: &mut std::collections::HashSet<String>,
+            sorted: &mut Vec<&'a Box<dyn SystemCall>>
+        ) -> Result<(), String> {
+            let system_name = system.get_system_name().to_string();
+            
+            if visiting.contains(&system_name) {
+                return Err(format!("Circular dependency detected involving system '{}'", system_name));
+            }
+            
+            if visited.contains(&system_name) {
+                return Ok(());
+            }
+            
+            visiting.insert(system_name.clone());
+            
+            // Visit all dependencies first
+            for dep_name in system.get_dependencies() {
+                if let Some(dep_system) = system_map.get(dep_name) {
+                    dfs(dep_system, system_map, visited, visiting, sorted)?;
+                } else {
+                    return Err(format!("System '{}' depends on '{}' which does not exist", system_name, dep_name));
+                }
+            }
+            
+            visiting.remove(&system_name);
+            visited.insert(system_name);
+            sorted.push(system);
+            
+            Ok(())
+        }
+        
+        // Process all systems
+        for system in &self.systems {
+            if !visited.contains(system.get_system_name()) {
+                dfs(system, &system_map, &mut visited, &mut visiting, &mut sorted)?;
+            }
+        }
+        
+        Ok(sorted)
     }
     
     /// Run all new iterator-based systems with debug tracking
