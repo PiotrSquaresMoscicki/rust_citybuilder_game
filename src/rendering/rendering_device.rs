@@ -1,4 +1,5 @@
 use std::error::Error;
+use crate::core::math::{Vector2d, Transform2d, Color, ShapeType, FillStyle, StrokeStyle};
 
 /// Commands that can be sent to a rendering device
 #[derive(Debug, Clone)]
@@ -12,6 +13,23 @@ pub enum RenderCommand {
         cell_size: f32,
         line_color: (f32, f32, f32, f32),
         background_color: (f32, f32, f32, f32),
+    },
+    /// Draw a sprite
+    DrawSprite {
+        texture_id: String,
+        transform: Transform2d,
+        size: Vector2d,
+        color: Color,
+        z_order: i32,
+        uv_rect: (Vector2d, Vector2d),
+    },
+    /// Draw a shape
+    DrawShape {
+        shape_type: ShapeType,
+        transform: Transform2d,
+        fill: FillStyle,
+        stroke: Option<StrokeStyle>,
+        z_order: i32,
     },
 }
 
