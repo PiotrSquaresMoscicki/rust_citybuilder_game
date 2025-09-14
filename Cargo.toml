@@ -7,3 +7,10 @@ edition = "2021"
 tiny_http = "0.12"
 ron = "0.8"
 serde = { version = "1.0", features = ["derive"] }
+
+[dev-dependencies]
+criterion = { version = "0.5", features = ["html_reports"] }
+
+[[bench]]
+name = "debug_tracking_benchmarks"
+harness = false
