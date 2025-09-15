@@ -3,10 +3,12 @@ mod http_server;
 mod enhanced_http_server;
 mod core;
 mod rendering;
+mod input;
 
 use http_server::start_hello_world_server;
 use enhanced_http_server::demonstrate_rendering_with_web_client;
 use rendering::{WebServiceManager, WebClientRenderingDevice, initialize_global_rendering_manager, render_global_grid};
+use input::{initialize_global_input_manager, add_global_input_device, WebClientInputDevice};
 use rust_citybuilder_game::web_ecs_game::demonstrate_web_ecs_game;
 use std::env;
 
@@ -21,6 +23,29 @@ fn main() {
         eprintln!("Warning: Failed to initialize global rendering manager: {}", e);
     } else {
         println!("Global rendering manager initialized successfully");
+    }
+    
+    // Initialize the global input manager
+    match initialize_global_input_manager() {
+        Ok(_) => {
+            println!("Global input manager initialized successfully");
+            
+            // Add a web client input device for testing
+            let input_web_service = WebServiceManager::new("localhost:8086");
+            let input_device = Box::new(WebClientInputDevice::new(input_web_service, 1000));
+            
+            match add_global_input_device(input_device) {
+                Ok(device_id) => {
+                    println!("Web client input device added with ID: {}", device_id);
+                }
+                Err(e) => {
+                    eprintln!("Warning: Failed to add web client input device: {}", e);
+                }
+            }
+        }
+        Err(e) => {
+            eprintln!("Warning: Failed to initialize global input manager: {}", e);
+        }
     }
     
     // Check command line arguments to determine what to run

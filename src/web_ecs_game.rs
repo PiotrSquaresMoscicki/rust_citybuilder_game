@@ -1,5 +1,7 @@
 /// Web client integration for the clean ECS grid game
 use crate::grid_game_systems::GridGameWorld;
+use crate::rendering::{render_global_grid, WebServiceManager};
+use crate::input::{add_global_input_device, poll_global_input_events, is_global_key_pressed, WebClientInputDevice, Key};
 use tiny_http::{Server, Response, Header, Request, Method};
 use std::io::Read;
 use serde_json;
@@ -8,6 +10,7 @@ use serde_json;
 pub struct WebEcsGameDemo {
     game_world: GridGameWorld,
     address: String,
+    input_device_id: Option<u32>,
 }
 
 impl WebEcsGameDemo {
@@ -18,6 +21,42 @@ impl WebEcsGameDemo {
         Self {
             game_world,
             address: address.to_string(),
+            input_device_id: None,
+        }
+    }
+    
+    /// Initialize input device for the web client
+    fn initialize_input_device(&mut self) -> Result<(), String> {
+        // The global input manager should already have a web client input device from main.rs
+        println!("✅ Using existing global input manager with web client input device");
+        self.input_device_id = Some(1000); // Use the device ID from main.rs
+        Ok(())
+    }
+    
+    /// Process input using the global input manager
+    fn process_input_from_global_manager(&mut self) -> (i32, i32) {
+        // Poll events from global input manager
+        if let Ok(_events) = poll_global_input_events() {
+            // Check for movement keys using global input manager
+            let mut dx = 0;
+            let mut dy = 0;
+            
+            if is_global_key_pressed(&Key::W) || is_global_key_pressed(&Key::ArrowUp) {
+                dy = -1;
+            }
+            if is_global_key_pressed(&Key::S) || is_global_key_pressed(&Key::ArrowDown) {
+                dy = 1;
+            }
+            if is_global_key_pressed(&Key::A) || is_global_key_pressed(&Key::ArrowLeft) {
+                dx = -1;
+            }
+            if is_global_key_pressed(&Key::D) || is_global_key_pressed(&Key::ArrowRight) {
+                dx = 1;
+            }
+            
+            (dx, dy)
+        } else {
+            (0, 0)
         }
     }
     
@@ -26,13 +65,24 @@ impl WebEcsGameDemo {
         println!("🚀 Starting Web ECS Game Demo");
         println!("==============================");
         
+        // Initialize input device
+        self.initialize_input_device()?;
+        
+        // Test the global rendering manager by rendering a grid
+        if let Err(e) = render_global_grid(10, 8, 32.0) {
+            eprintln!("⚠️ Warning: Failed to render initial grid via global manager: {}", e);
+        } else {
+            println!("✅ Initial grid rendered via global rendering manager");
+        }
+        
         let server = Server::http(&self.address)
             .map_err(|e| format!("Failed to start HTTP server: {}", e))?;
         
         println!("🌐 Web ECS Game server started on http://{}", &self.address);
         println!("🎯 Open http://{} in your browser to play", &self.address);
         println!("📱 Use WASD keys to move the player");
-        println!("🔧 Using clean ECS implementation with system dependencies");
+        println!("🔧 Using global rendering and input managers");
+        println!("📡 Rendering: http://localhost:8081 | Input: http://localhost:8086");
         println!("");
         
         // HTTP server loop
@@ -91,7 +141,8 @@ impl WebEcsGameDemo {
                             "playerPosition": {
                                 "x": player_pos.0,
                                 "y": player_pos.1
-                            }
+                            },
+                            "inputMethod": "HTTP API (will be replaced by global input manager)"
                         });
                         
                         let header = Header::from_bytes(&b"Content-Type"[..], &b"application/json"[..])
@@ -106,6 +157,20 @@ impl WebEcsGameDemo {
                 }
             }
             (&Method::Get, "/state") => {
+                // Process input from global input manager
+                let (dx, dy) = self.process_input_from_global_manager();
+                
+                // Apply movement if any input detected
+                let moved = if dx != 0 || dy != 0 {
+                    let success = self.game_world.move_player(dx, dy);
+                    if success {
+                        let _ = self.game_world.update();
+                    }
+                    success
+                } else {
+                    false
+                };
+                
                 // Get current game state
                 let game_state = self.game_world.get_game_state();
                 let player_pos = self.game_world.get_player_position().unwrap_or((0, 0));
@@ -115,7 +180,24 @@ impl WebEcsGameDemo {
                     "playerPosition": {
                         "x": player_pos.0,
                         "y": player_pos.1
-                    }
+                    },
+                    "inputMethod": "Global Input Manager",
+                    "moved": moved,
+                    "lastInput": format!("dx: {}, dy: {}", dx, dy)
+                });
+                
+                let header = Header::from_bytes(&b"Content-Type"[..], &b"application/json"[..])
+                    .map_err(|_| "Failed to create header")?;
+                let response = Response::from_string(response_data.to_string()).with_header(header);
+                request.respond(response)?;
+            }
+            (&Method::Get, "/input-info") => {
+                // Return information about the input manager
+                let response_data = serde_json::json!({
+                    "inputDeviceId": self.input_device_id,
+                    "globalManagerActive": true,
+                    "inputPort": "localhost:8086",
+                    "renderingPort": "localhost:8081"
                 });
                 
                 let header = Header::from_bytes(&b"Content-Type"[..], &b"application/json"[..])
@@ -146,7 +228,7 @@ impl WebEcsGameDemo {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ECS Grid Game Demo - Clean Architecture</title>
+    <title>Framework Demo - Rendering & Input Modules</title>
     <style>
         body {{
             font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
@@ -157,7 +239,7 @@ impl WebEcsGameDemo {
             min-height: 100vh;
         }}
         .container {{
-            max-width: 900px;
+            max-width: 1000px;
             margin: 0 auto;
             background: #000;
             padding: 30px;
@@ -272,14 +354,24 @@ impl WebEcsGameDemo {
             box-shadow: 0 0 15px rgba(0, 255, 65, 0.2);
         }}
         
-        .ecs-info {{
+        .framework-info {{
             background: #0a0a0a;
             border: 1px solid #666;
-            padding: 10px;
+            padding: 15px;
             margin: 10px 0;
             border-radius: 5px;
             font-size: 12px;
             color: #999;
+        }}
+        
+        .manager-status {{
+            background: #001122;
+            border: 1px solid #0088cc;
+            padding: 10px;
+            margin: 5px 0;
+            border-radius: 3px;
+            font-size: 11px;
+            color: #88ccff;
         }}
         
         .success {{ color: #00ff41; }}
@@ -288,8 +380,8 @@ impl WebEcsGameDemo {
 </head>
 <body>
     <div class="container">
-        <h1>🎮 ECS Grid Game Demo</h1>
-        <div class="subtitle">Clean Entity Component System Implementation</div>
+        <h1>🎮 Framework Demo - Rendering & Input Modules</h1>
+        <div class="subtitle">Showcasing modular rendering and input system capabilities</div>
         
         <div class="game-container">
             <div id="gameGrid">{}</div>
@@ -318,6 +410,7 @@ impl WebEcsGameDemo {
                 <h3>Game Status</h3>
                 <div>Player Position: <span id="playerPos">({}, {})</span></div>
                 <div>Last Action: <span id="lastAction">Game Started</span></div>
+                <div>Input Method: <span id="inputMethod">Loading...</span></div>
             </div>
             
             <div class="legend">
@@ -327,18 +420,35 @@ impl WebEcsGameDemo {
                 <div class="legend-item"><span class="empty">.</span> - Empty space</div>
             </div>
             
-            <div class="ecs-info">
-                <h3>🔧 ECS Architecture</h3>
-                <div><strong>Systems:</strong> GridInputSystem → GridMovementSystem → GridCollisionSystem → GridRenderSystem</div>
-                <div><strong>Components:</strong> GridPositionComponent, PlayerComponent, ObstacleComponent, RenderComponent</div>
-                <div><strong>Dependencies:</strong> Systems execute in order based on declared dependencies</div>
-                <div><strong>Iterators:</strong> EntIt&lt;Component1, Component2&gt; provides clean component access</div>
+            <div class="framework-info">
+                <h3>🔧 Framework Architecture Showcase</h3>
+                <div class="manager-status">
+                    <strong>📡 Global Rendering Manager:</strong> WebClientRenderingDevice on port 8081<br>
+                    ✅ Handles all rendering commands globally<br>
+                    🎨 Renders via custom protocol to web client
+                </div>
+                <div class="manager-status">
+                    <strong>🎮 Global Input Manager:</strong> WebClientInputDevice on port 8086<br>
+                    ✅ Processes input events from multiple sources<br>
+                    🔗 Integrates keyboard, mouse, and custom input devices
+                </div>
+                <div class="manager-status">
+                    <strong>🏗️ ECS Systems:</strong> GridInputSystem → GridMovementSystem → GridCollisionSystem<br>
+                    ✅ Clean dependency-based system execution<br>
+                    📦 EntIt&lt;Component1, Component2&gt; provides type-safe component access
+                </div>
+                <div class="manager-status">
+                    <strong>🌐 Web Integration:</strong> HTTP API bridges web client to framework<br>
+                    ✅ Demonstrates modular architecture capabilities<br>
+                    🔄 Real-time state synchronization between client and server
+                </div>
             </div>
         </div>
     </div>
 
     <script>
         let playerPos = {{ x: {}, y: {} }};
+        let useGlobalInputManager = true; // Toggle between input methods
         
         // Update the display with current game state
         function updateDisplay(gameState) {{
@@ -362,7 +472,12 @@ impl WebEcsGameDemo {
             element.className = isSuccess ? 'success' : 'error';
         }}
         
-        // Move player
+        // Update input method display
+        function updateInputMethod(method) {{
+            document.getElementById('inputMethod').textContent = method;
+        }}
+        
+        // Move player using the legacy HTTP API
         async function move(direction) {{
             try {{
                 const response = await fetch('/move', {{
@@ -379,6 +494,7 @@ impl WebEcsGameDemo {
                     updateDisplay(data.gameState);
                     updatePlayerPosition(data.playerPosition.x, data.playerPosition.y);
                     updateLastAction(`Moved ${{direction}} to (${{data.playerPosition.x}}, ${{data.playerPosition.y}})`, true);
+                    updateInputMethod(data.inputMethod || "HTTP API");
                     console.log(`Player moved ${{direction}} to (${{data.playerPosition.x}}, ${{data.playerPosition.y}})`);
                 }} else {{
                     updateLastAction(`Cannot move ${{direction}} - blocked or out of bounds`, false);
@@ -387,6 +503,35 @@ impl WebEcsGameDemo {
             }} catch (error) {{
                 console.error('Error moving player:', error);
                 updateLastAction('Error communicating with server', false);
+            }}
+        }}
+        
+        // Poll game state (also processes global input manager)
+        async function pollGameState() {{
+            try {{
+                const response = await fetch('/state');
+                const data = await response.json();
+                
+                updateDisplay(data.gameState);
+                updatePlayerPosition(data.playerPosition.x, data.playerPosition.y);
+                updateInputMethod(data.inputMethod || "Unknown");
+                
+                if (data.moved) {{
+                    updateLastAction(`Global Input: ${{data.lastInput}}`, true);
+                }}
+            }} catch (error) {{
+                console.error('Error polling state:', error);
+            }}
+        }}
+        
+        // Get input manager info
+        async function getInputInfo() {{
+            try {{
+                const response = await fetch('/input-info');
+                const data = await response.json();
+                console.log('Input Manager Info:', data);
+            }} catch (error) {{
+                console.error('Error getting input info:', error);
             }}
         }}
         
@@ -420,13 +565,21 @@ impl WebEcsGameDemo {
         updateDisplay(`{}`);
         updatePlayerPosition({}, {});
         
+        // Poll state regularly to showcase global input manager
+        setInterval(pollGameState, 100);
+        
+        // Get input manager info on load
+        getInputInfo();
+        
         // Give focus to the page so keyboard events work
         window.focus();
         document.body.focus();
         
-        console.log("🎮 ECS Grid Game loaded!");
-        console.log("🔧 Using clean System trait with Dependencies and Iterators");
-        console.log("📡 Web client sends input to server, server runs ECS systems");
+        console.log("🎮 Framework Demo loaded!");
+        console.log("🔧 Global Rendering Manager: localhost:8081");
+        console.log("🎮 Global Input Manager: localhost:8086");
+        console.log("📡 ECS Game Server: localhost:8085");
+        console.log("🌟 This demo showcases the modular rendering and input framework!");
     </script>
 </body>
 </html>"#, 
@@ -467,9 +620,10 @@ mod tests {
     fn test_game_page_generation() {
         let web_game = WebEcsGameDemo::new("localhost:8000");
         let page = web_game.create_game_page();
-        assert!(page.contains("ECS Grid Game Demo"));
+        assert!(page.contains("Framework Demo"));
         assert!(page.contains("gameGrid"));
-        assert!(page.contains("System trait"));
-        assert!(page.contains("Dependencies"));
+        assert!(page.contains("Global Rendering Manager"));
+        assert!(page.contains("Global Input Manager"));
+        assert!(page.contains("modular rendering and input"));
     }
 }
