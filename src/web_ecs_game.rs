@@ -1,17 +1,14 @@
 /// Web client integration for the clean ECS grid game
 use crate::grid_game_systems::GridGameWorld;
 use crate::rendering::{render_global_grid};
-use crate::input::{poll_global_input_events, is_global_key_pressed, Key};
 use tiny_http::{Server, Response, Header, Request, Method};
 use serde_json;
 use std::fs;
-use std::io::Read;
 
 /// Web-based ECS game demo
 pub struct WebEcsGameDemo {
     game_world: GridGameWorld,
     address: String,
-    input_device_id: Option<u32>,
 }
 
 impl WebEcsGameDemo {
@@ -22,42 +19,27 @@ impl WebEcsGameDemo {
         Self {
             game_world,
             address: address.to_string(),
-            input_device_id: None,
         }
     }
     
-    /// Initialize input device for the web client
-    fn initialize_input_device(&mut self) -> Result<(), String> {
-        // The global input manager should already have a web client input device from main.rs
-        println!("✅ Using existing global input manager with web client input device");
-        self.input_device_id = Some(1000); // Use the device ID from main.rs
-        Ok(())
-    }
-    
-    /// Process input using the global input manager
-    fn process_input_from_global_manager(&mut self) -> (i32, i32) {
-        // Poll events from global input manager
-        if let Ok(_events) = poll_global_input_events() {
-            // Check for movement keys using global input manager
-            let mut dx = 0;
-            let mut dy = 0;
-            
-            if is_global_key_pressed(&Key::W) || is_global_key_pressed(&Key::ArrowUp) {
-                dy = -1;
+    /// Process input by updating the ECS InputComponent based on current input state
+    fn update_ecs_input_from_javascript(&mut self, dx: i32, dy: i32) {
+        // Find the player entity with InputComponent and update it
+        for entity in self.game_world.world.get_all_entities() {
+            if self.game_world.world.has_component::<crate::grid_game_components::PlayerComponent>(*entity) {
+                if let Some(mut input_comp) = self.game_world.world.get_component_mut::<crate::grid_game_components::InputComponent>(*entity) {
+                    // Clear previous input
+                    input_comp.clear();
+                    
+                    // Set new input based on JavaScript input
+                    if dx < 0 { input_comp.move_left = true; }
+                    if dx > 0 { input_comp.move_right = true; }
+                    if dy < 0 { input_comp.move_up = true; }
+                    if dy > 0 { input_comp.move_down = true; }
+                    
+                    break;
+                }
             }
-            if is_global_key_pressed(&Key::S) || is_global_key_pressed(&Key::ArrowDown) {
-                dy = 1;
-            }
-            if is_global_key_pressed(&Key::A) || is_global_key_pressed(&Key::ArrowLeft) {
-                dx = -1;
-            }
-            if is_global_key_pressed(&Key::D) || is_global_key_pressed(&Key::ArrowRight) {
-                dx = 1;
-            }
-            
-            (dx, dy)
-        } else {
-            (0, 0)
         }
     }
     
@@ -66,8 +48,6 @@ impl WebEcsGameDemo {
         println!("🚀 Starting Web ECS Game Demo");
         println!("==============================");
         
-        // Initialize input device
-        self.initialize_input_device()?;
         
         // Test the global rendering manager by rendering a grid
         if let Err(e) = render_global_grid(10, 8, 32.0) {
@@ -82,8 +62,8 @@ impl WebEcsGameDemo {
         println!("🌐 Web ECS Game server started on http://{}", &self.address);
         println!("🎯 Open http://{} in your browser to play", &self.address);
         println!("📱 Use WASD keys to move the player");
-        println!("🔧 Using global rendering and input managers");
-        println!("📡 Rendering: http://localhost:8081 | Input: http://localhost:8086");
+        println!("🔧 Using ECS with JavaScript input libraries");
+        println!("📡 Rendering: http://localhost:8081 | Input: JavaScript InputManager");
         println!("");
         
         // HTTP server loop
@@ -141,6 +121,9 @@ impl WebEcsGameDemo {
                             _ => (0, 0),
                         };
                         
+                        // Update ECS input state
+                        self.update_ecs_input_from_javascript(dx, dy);
+                        
                         let moved = self.game_world.move_player(dx, dy);
                         
                         // Update the game systems after movement
@@ -157,7 +140,7 @@ impl WebEcsGameDemo {
                                 "x": player_pos.0,
                                 "y": player_pos.1
                             },
-                            "inputMethod": "HTTP API (will be replaced by global input manager)"
+                            "inputMethod": "JavaScript Libraries + ECS"
                         });
                         
                         let header = Header::from_bytes(&b"Content-Type"[..], &b"application/json"[..])
@@ -172,21 +155,8 @@ impl WebEcsGameDemo {
                 }
             }
             (Method::Get, "/state") => {
-                // Process input from global input manager
-                let (dx, dy) = self.process_input_from_global_manager();
-                
-                // Apply movement if any input detected
-                let moved = if dx != 0 || dy != 0 {
-                    let success = self.game_world.move_player(dx, dy);
-                    if success {
-                        let _ = self.game_world.update();
-                    }
-                    success
-                } else {
-                    false
-                };
-                
-                // Get current game state
+                // For polling-based input, JavaScript will handle input and send via /move
+                // This endpoint just returns current game state
                 let game_state = self.game_world.get_game_state();
                 let player_pos = self.game_world.get_player_position().unwrap_or((0, 0));
                 
@@ -196,9 +166,9 @@ impl WebEcsGameDemo {
                         "x": player_pos.0,
                         "y": player_pos.1
                     },
-                    "inputMethod": "Global Input Manager",
-                    "moved": moved,
-                    "lastInput": format!("dx: {}, dy: {}", dx, dy)
+                    "inputMethod": "JavaScript Libraries with ECS Backend",
+                    "moved": false,
+                    "lastInput": "Polling mode - input via JavaScript"
                 });
                 
                 let header = Header::from_bytes(&b"Content-Type"[..], &b"application/json"[..])
@@ -207,11 +177,12 @@ impl WebEcsGameDemo {
                 request.respond(response)?;
             }
             (Method::Get, "/input-info") => {
-                // Return information about the input manager
+                // Return information about the ECS input system
                 let response_data = serde_json::json!({
-                    "inputDeviceId": self.input_device_id,
-                    "globalManagerActive": true,
-                    "inputPort": "localhost:8086",
+                    "inputSystemType": "JavaScript Libraries + ECS Backend",
+                    "ecsInputComponentActive": true,
+                    "inputLibrary": "input-manager.js",
+                    "renderingLibrary": "rendering-manager.js",
                     "renderingPort": "localhost:8081"
                 });
                 
