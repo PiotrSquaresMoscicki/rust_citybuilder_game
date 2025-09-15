@@ -1,9 +1,8 @@
 /// Web client integration for the clean ECS grid game
 use crate::grid_game_systems::GridGameWorld;
-use crate::rendering::{render_global_grid, WebServiceManager};
-use crate::input::{add_global_input_device, poll_global_input_events, is_global_key_pressed, WebClientInputDevice, Key};
+use crate::rendering::{render_global_grid};
+use crate::input::{poll_global_input_events, is_global_key_pressed, Key};
 use tiny_http::{Server, Response, Header, Request, Method};
-use std::io::Read;
 use serde_json;
 
 /// Web-based ECS game demo
