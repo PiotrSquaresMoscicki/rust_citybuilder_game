@@ -1,7 +1,6 @@
-use crate::ecs::{World, EntityIterator, Mut, System, SystemTypeId};
+use crate::ecs::World;
 use crate::core::input_action::InputComponent;
-use super::super::input::{get_global_input_manager, poll_global_input_events, Key, MouseButton};
-use std::any::TypeId;
+use super::super::input::{poll_global_input_events, get_global_input_manager, Key, MouseButton};
 use std::error::Error;
 
 /// Input system that processes input events from the global input manager 
@@ -18,25 +17,6 @@ impl InputSystem {
         }
     }
 
-    /// Process input and update all input components in the world
-    pub fn process_input_events(input_iter: EntityIterator<Mut<InputComponent>, Mut<InputComponent>>) -> Result<(), Box<dyn Error>> {
-        // Poll events from the global input manager
-        let events = match poll_global_input_events() {
-            Ok(events) => events,
-            Err(e) => {
-                eprintln!("Failed to poll input events: {}", e);
-                return Err(e);
-            }
-        };
-
-        // Update all input components with the new events
-        for (mut input_component, _) in input_iter {
-            input_component.update_from_events(&events);
-        }
-
-        Ok(())
-    }
-
     /// Helper function to update input components directly in the world
     /// This is useful when the ECS doesn't have the dual-component iterator requirement
     pub fn update_input_components_in_world(world: &World) -> Result<(), Box<dyn Error>> {
@@ -50,7 +30,9 @@ impl InputSystem {
         };
 
         // Get all entities with InputComponent
-        let entities_with_input = world.entities_with_component::<InputComponent>();
+        let entities_with_input = world.entities_with_components(&[
+            std::any::TypeId::of::<InputComponent>()
+        ]);
 
         for entity in entities_with_input {
             if let Some(mut input_comp) = world.get_component_mut::<InputComponent>(entity) {
@@ -60,6 +42,13 @@ impl InputSystem {
 
         Ok(())
     }
+
+    /// Update the input system
+    pub fn update(&self, world: &World) {
+        if let Err(e) = Self::update_input_components_in_world(world) {
+            eprintln!("Input system update failed: {}", e);
+        }
+    }
 }
 
 impl Default for InputSystem {
@@ -68,33 +57,9 @@ impl Default for InputSystem {
     }
 }
 
-impl System for InputSystem {
-    fn system_type_id(&self) -> SystemTypeId {
-        "input_system"
-    }
-
-    fn get_dependencies(&self) -> Vec<SystemTypeId> {
-        vec![] // Input system has no dependencies - it's typically run first
-    }
-
-    fn update(&self, world: &World) {
-        if let Err(e) = Self::update_input_components_in_world(world) {
-            eprintln!("Input system update failed: {}", e);
-        }
-    }
-
-    fn get_system_name(&self) -> &str {
-        &self.name
-    }
-
-    fn get_mutable_component_types(&self) -> Vec<TypeId> {
-        vec![TypeId::of::<InputComponent>()]
-    }
-}
-
 /// Function-based input system for compatibility with function-based ECS
-pub fn input_system(input_iter: EntityIterator<Mut<InputComponent>, Mut<InputComponent>>) {
-    if let Err(e) = InputSystem::process_input_events(input_iter) {
+pub fn input_system(world: &World) {
+    if let Err(e) = InputSystem::update_input_components_in_world(world) {
         eprintln!("Input system function failed: {}", e);
     }
 }
@@ -126,7 +91,9 @@ pub fn get_input_state(world: &World, entity: crate::ecs::Entity) -> Option<impl
 
 /// Helper functions for common input queries
 pub fn is_key_pressed_in_world(world: &World, key: &Key) -> bool {
-    let entities_with_input = world.entities_with_component::<InputComponent>();
+    let entities_with_input = world.entities_with_components(&[
+        std::any::TypeId::of::<InputComponent>()
+    ]);
     for entity in entities_with_input {
         if let Some(input_comp) = world.get_component::<InputComponent>(entity) {
             if input_comp.is_key_pressed(key) {
@@ -138,7 +105,9 @@ pub fn is_key_pressed_in_world(world: &World, key: &Key) -> bool {
 }
 
 pub fn is_key_just_pressed_in_world(world: &World, key: &Key) -> bool {
-    let entities_with_input = world.entities_with_component::<InputComponent>();
+    let entities_with_input = world.entities_with_components(&[
+        std::any::TypeId::of::<InputComponent>()
+    ]);
     for entity in entities_with_input {
         if let Some(input_comp) = world.get_component::<InputComponent>(entity) {
             if input_comp.is_key_just_pressed(key) {
@@ -150,7 +119,9 @@ pub fn is_key_just_pressed_in_world(world: &World, key: &Key) -> bool {
 }
 
 pub fn is_mouse_button_pressed_in_world(world: &World, button: &MouseButton) -> bool {
-    let entities_with_input = world.entities_with_component::<InputComponent>();
+    let entities_with_input = world.entities_with_components(&[
+        std::any::TypeId::of::<InputComponent>()
+    ]);
     for entity in entities_with_input {
         if let Some(input_comp) = world.get_component::<InputComponent>(entity) {
             if input_comp.is_mouse_button_pressed(button) {
@@ -162,7 +133,9 @@ pub fn is_mouse_button_pressed_in_world(world: &World, button: &MouseButton) -> 
 }
 
 pub fn get_mouse_position_from_world(world: &World) -> Option<crate::core::math::Vector2d> {
-    let entities_with_input = world.entities_with_component::<InputComponent>();
+    let entities_with_input = world.entities_with_components(&[
+        std::any::TypeId::of::<InputComponent>()
+    ]);
     for entity in entities_with_input {
         if let Some(input_comp) = world.get_component::<InputComponent>(entity) {
             return Some(input_comp.get_mouse_position());
@@ -183,13 +156,8 @@ mod tests {
     #[test]
     fn test_input_system_creation() {
         let input_system = InputSystem::new();
-        assert_eq!(input_system.system_type_id(), "input_system");
-        assert_eq!(input_system.get_system_name(), "InputSystem");
-        assert!(input_system.get_dependencies().is_empty());
-        
-        let mutable_types = input_system.get_mutable_component_types();
-        assert_eq!(mutable_types.len(), 1);
-        assert_eq!(mutable_types[0], TypeId::of::<InputComponent>());
+        assert_eq!(input_system.name, "InputSystem");
+        // Just basic tests since we removed complex system interface
     }
 
     #[test]
@@ -272,7 +240,7 @@ mod tests {
         input_system.update(&world);
         
         // Should complete without panicking
-        assert_eq!(input_system.system_type_id(), "input_system");
+        assert_eq!(input_system.name, "InputSystem");
     }
 
     #[test]

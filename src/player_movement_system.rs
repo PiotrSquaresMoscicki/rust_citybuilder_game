@@ -1,6 +1,7 @@
 use crate::ecs::World;
 use crate::game_components::{PlayerComponent, GridComponent, ObstacleComponent};
-use crate::input::{get_global_input_manager, Key};
+use crate::core::input_action::InputComponent;
+use crate::input::Key;
 use crate::core::math::Vector2d;
 
 /// System for handling player movement based on input
@@ -13,34 +14,43 @@ impl PlayerMovementSystem {
     
     /// Update player movement based on input
     pub fn update_player_movement(world: &World) {
-        // Get input manager
-        let input_manager = match get_global_input_manager() {
-            Ok(manager) => manager,
-            Err(_) => return, // No input manager available
+        // Get entities with input components
+        let input_entities = world.entities_with_components(&[
+            std::any::TypeId::of::<InputComponent>()
+        ]);
+        
+        // If no input entities, return early
+        if input_entities.is_empty() {
+            return;
+        }
+        
+        // Get the first input component (typically there's only one)
+        let input_component = if let Some(&input_entity) = input_entities.first() {
+            world.get_component::<InputComponent>(input_entity)
+        } else {
+            return;
         };
         
-        // Check for movement input
+        let input_comp = match input_component {
+            Some(comp) => comp,
+            None => return,
+        };
+        
+        // Check for movement input - using "just pressed" for discrete movement
         let mut movement = Vector2d::new(0.0, 0.0);
         
-        let manager_lock = match input_manager.lock() {
-            Ok(lock) => lock,
-            Err(_) => return,
-        };
-        
-        if manager_lock.is_key_pressed(&Key::W) || manager_lock.is_key_pressed(&Key::ArrowUp) {
+        if input_comp.is_key_just_pressed(&Key::ArrowUp) {
             movement.y -= 1.0; // Move up (negative Y)
         }
-        if manager_lock.is_key_pressed(&Key::S) || manager_lock.is_key_pressed(&Key::ArrowDown) {
+        if input_comp.is_key_just_pressed(&Key::ArrowDown) {
             movement.y += 1.0; // Move down (positive Y)
         }
-        if manager_lock.is_key_pressed(&Key::A) || manager_lock.is_key_pressed(&Key::ArrowLeft) {
+        if input_comp.is_key_just_pressed(&Key::ArrowLeft) {
             movement.x -= 1.0; // Move left (negative X)
         }
-        if manager_lock.is_key_pressed(&Key::D) || manager_lock.is_key_pressed(&Key::ArrowRight) {
+        if input_comp.is_key_just_pressed(&Key::ArrowRight) {
             movement.x += 1.0; // Move right (positive X)
         }
-        
-        drop(manager_lock); // Release the lock
         
         // If no movement input, return early
         if movement.x == 0.0 && movement.y == 0.0 {
@@ -133,6 +143,8 @@ impl Direction {
 mod tests {
     use super::*;
     use crate::ecs::World;
+    use crate::core::input_action::InputComponent;
+    use crate::input::InputEvent;
     
     #[test]
     fn test_direction_vectors() {
@@ -150,9 +162,255 @@ mod tests {
     }
     
     #[test]
-    fn test_player_movement_without_input_manager() {
+    fn test_player_movement_without_input_component() {
         let world = World::new();
-        // This should not panic even without an input manager
+        // This should not panic even without an input component
         PlayerMovementSystem::update_player_movement(&world);
+    }
+    
+    #[test]
+    fn test_arrow_key_movement_up() {
+        let mut world = World::new();
+        
+        // Create input entity
+        let input_entity = world.create_entity();
+        let mut input_comp = InputComponent::new();
+        input_comp.update_from_events(&[InputEvent::KeyPress { key: Key::ArrowUp }]);
+        world.add_component(input_entity, input_comp);
+        
+        // Create player entity
+        let player_entity = world.create_entity();
+        let player_comp = PlayerComponent::new(5, 5, 1.0);
+        world.add_component(player_entity, player_comp);
+        
+        // Create grid entity
+        let grid_entity = world.create_entity();
+        let grid_comp = GridComponent::new(10, 10, 32.0);
+        world.add_component(grid_entity, grid_comp);
+        
+        // Execute movement system
+        PlayerMovementSystem::update_player_movement(&world);
+        
+        // Check player moved up (y decreased)
+        let player = world.get_component::<PlayerComponent>(player_entity).unwrap();
+        assert_eq!(player.get_grid_position(), (5, 4));
+    }
+    
+    #[test]
+    fn test_arrow_key_movement_down() {
+        let mut world = World::new();
+        
+        // Create input entity
+        let input_entity = world.create_entity();
+        let mut input_comp = InputComponent::new();
+        input_comp.update_from_events(&[InputEvent::KeyPress { key: Key::ArrowDown }]);
+        world.add_component(input_entity, input_comp);
+        
+        // Create player entity
+        let player_entity = world.create_entity();
+        let player_comp = PlayerComponent::new(5, 5, 1.0);
+        world.add_component(player_entity, player_comp);
+        
+        // Create grid entity
+        let grid_entity = world.create_entity();
+        let grid_comp = GridComponent::new(10, 10, 32.0);
+        world.add_component(grid_entity, grid_comp);
+        
+        // Execute movement system
+        PlayerMovementSystem::update_player_movement(&world);
+        
+        // Check player moved down (y increased)
+        let player = world.get_component::<PlayerComponent>(player_entity).unwrap();
+        assert_eq!(player.get_grid_position(), (5, 6));
+    }
+    
+    #[test]
+    fn test_arrow_key_movement_left() {
+        let mut world = World::new();
+        
+        // Create input entity
+        let input_entity = world.create_entity();
+        let mut input_comp = InputComponent::new();
+        input_comp.update_from_events(&[InputEvent::KeyPress { key: Key::ArrowLeft }]);
+        world.add_component(input_entity, input_comp);
+        
+        // Create player entity
+        let player_entity = world.create_entity();
+        let player_comp = PlayerComponent::new(5, 5, 1.0);
+        world.add_component(player_entity, player_comp);
+        
+        // Create grid entity
+        let grid_entity = world.create_entity();
+        let grid_comp = GridComponent::new(10, 10, 32.0);
+        world.add_component(grid_entity, grid_comp);
+        
+        // Execute movement system
+        PlayerMovementSystem::update_player_movement(&world);
+        
+        // Check player moved left (x decreased)
+        let player = world.get_component::<PlayerComponent>(player_entity).unwrap();
+        assert_eq!(player.get_grid_position(), (4, 5));
+    }
+    
+    #[test]
+    fn test_arrow_key_movement_right() {
+        let mut world = World::new();
+        
+        // Create input entity
+        let input_entity = world.create_entity();
+        let mut input_comp = InputComponent::new();
+        input_comp.update_from_events(&[InputEvent::KeyPress { key: Key::ArrowRight }]);
+        world.add_component(input_entity, input_comp);
+        
+        // Create player entity
+        let player_entity = world.create_entity();
+        let player_comp = PlayerComponent::new(5, 5, 1.0);
+        world.add_component(player_entity, player_comp);
+        
+        // Create grid entity
+        let grid_entity = world.create_entity();
+        let grid_comp = GridComponent::new(10, 10, 32.0);
+        world.add_component(grid_entity, grid_comp);
+        
+        // Execute movement system
+        PlayerMovementSystem::update_player_movement(&world);
+        
+        // Check player moved right (x increased)
+        let player = world.get_component::<PlayerComponent>(player_entity).unwrap();
+        assert_eq!(player.get_grid_position(), (6, 5));
+    }
+    
+    #[test]
+    fn test_arrow_key_movement_boundary_collision() {
+        let mut world = World::new();
+        
+        // Create input entity - try to move up
+        let input_entity = world.create_entity();
+        let mut input_comp = InputComponent::new();
+        input_comp.update_from_events(&[InputEvent::KeyPress { key: Key::ArrowUp }]);
+        world.add_component(input_entity, input_comp);
+        
+        // Create player entity at top boundary
+        let player_entity = world.create_entity();
+        let player_comp = PlayerComponent::new(5, 0, 1.0); // At y=0 (top)
+        world.add_component(player_entity, player_comp);
+        
+        // Create grid entity
+        let grid_entity = world.create_entity();
+        let grid_comp = GridComponent::new(10, 10, 32.0);
+        world.add_component(grid_entity, grid_comp);
+        
+        // Execute movement system
+        PlayerMovementSystem::update_player_movement(&world);
+        
+        // Check player did not move (stayed at boundary)
+        let player = world.get_component::<PlayerComponent>(player_entity).unwrap();
+        assert_eq!(player.get_grid_position(), (5, 0));
+    }
+    
+    #[test]
+    fn test_arrow_key_movement_obstacle_collision() {
+        let mut world = World::new();
+        
+        // Create input entity - try to move right
+        let input_entity = world.create_entity();
+        let mut input_comp = InputComponent::new();
+        input_comp.update_from_events(&[InputEvent::KeyPress { key: Key::ArrowRight }]);
+        world.add_component(input_entity, input_comp);
+        
+        // Create player entity
+        let player_entity = world.create_entity();
+        let player_comp = PlayerComponent::new(5, 5, 1.0);
+        world.add_component(player_entity, player_comp);
+        
+        // Create grid entity
+        let grid_entity = world.create_entity();
+        let grid_comp = GridComponent::new(10, 10, 32.0);
+        world.add_component(grid_entity, grid_comp);
+        
+        // Create obstacle entity at (6, 5) - where player wants to move
+        let obstacle_entity = world.create_entity();
+        let obstacle_comp = ObstacleComponent::new(6, 5);
+        world.add_component(obstacle_entity, obstacle_comp);
+        
+        // Execute movement system
+        PlayerMovementSystem::update_player_movement(&world);
+        
+        // Check player did not move (blocked by obstacle)
+        let player = world.get_component::<PlayerComponent>(player_entity).unwrap();
+        assert_eq!(player.get_grid_position(), (5, 5));
+    }
+    
+    #[test]
+    fn test_discrete_movement_behavior() {
+        let mut world = World::new();
+        
+        // Create input entity
+        let input_entity = world.create_entity();
+        let mut input_comp = InputComponent::new();
+        
+        // First frame: press arrow key
+        input_comp.update_from_events(&[InputEvent::KeyPress { key: Key::ArrowRight }]);
+        world.add_component(input_entity, input_comp);
+        
+        // Create player entity
+        let player_entity = world.create_entity();
+        let player_comp = PlayerComponent::new(5, 5, 1.0);
+        world.add_component(player_entity, player_comp);
+        
+        // Create grid entity
+        let grid_entity = world.create_entity();
+        let grid_comp = GridComponent::new(10, 10, 32.0);
+        world.add_component(grid_entity, grid_comp);
+        
+        // Execute movement system - should move once
+        PlayerMovementSystem::update_player_movement(&world);
+        
+        // Check player moved right once
+        let player = world.get_component::<PlayerComponent>(player_entity).unwrap();
+        assert_eq!(player.get_grid_position(), (6, 5));
+        
+        // Second frame: hold key (no new key press events)
+        let mut input_comp = world.get_component_mut::<InputComponent>(input_entity).unwrap();
+        input_comp.update_from_events(&[]); // No events, just holding
+        drop(input_comp);
+        
+        // Execute movement system again - should NOT move (discrete movement)
+        PlayerMovementSystem::update_player_movement(&world);
+        
+        // Check player did not move again (still at (6, 5))
+        let player = world.get_component::<PlayerComponent>(player_entity).unwrap();
+        assert_eq!(player.get_grid_position(), (6, 5));
+    }
+    
+    #[test]
+    fn test_multiple_arrow_keys_same_frame() {
+        let mut world = World::new();
+        
+        // Create input entity with multiple arrow keys pressed in same frame
+        let input_entity = world.create_entity();
+        let mut input_comp = InputComponent::new();
+        input_comp.update_from_events(&[
+            InputEvent::KeyPress { key: Key::ArrowRight },
+            InputEvent::KeyPress { key: Key::ArrowDown },
+        ]);
+        world.add_component(input_entity, input_comp);
+        
+        // Create player entity
+        let player_entity = world.create_entity();
+        let player_comp = PlayerComponent::new(5, 5, 1.0);
+        world.add_component(player_entity, player_comp);
+        
+        // Create grid entity
+        let grid_entity = world.create_entity();
+        let grid_comp = GridComponent::new(10, 10, 32.0);
+        world.add_component(grid_entity, grid_comp);
+        
+        // Execute movement system
+        PlayerMovementSystem::update_player_movement(&world);
+        
+        // Check player moved diagonally (right and down)
+        let player = world.get_component::<PlayerComponent>(player_entity).unwrap();
+        assert_eq!(player.get_grid_position(), (6, 6));
     }
 }
