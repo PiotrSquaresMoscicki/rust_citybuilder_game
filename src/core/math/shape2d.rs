@@ -4,6 +4,7 @@ use super::{vector2d::Vector2d, sprite2d::Color};
 
 /// Different types of 2D shapes that can be rendered
 #[derive(Debug, Clone, PartialEq)]
+#[allow(dead_code)] // Core shape types for 2D rendering system
 pub enum ShapeType {
     /// Circle with radius
     Circle { radius: f32 },

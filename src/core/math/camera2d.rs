@@ -5,6 +5,7 @@ use super::{vector2d::Vector2d, angle2d::Angle2d, transform2d::Transform2d};
 /// Camera2d component that defines the view transformation for 2D rendering
 /// Position and rotation are now handled by the Transform2dComponent
 #[derive(Debug, Clone, PartialEq)]
+#[allow(dead_code)] // Core component for 2D camera system
 pub struct Camera2d {
     /// Scale/zoom of the camera (higher values = zoomed in)
     scale: f32,
@@ -13,6 +14,7 @@ pub struct Camera2d {
     view_height: f32,
 }
 
+#[allow(dead_code)] // Core component implementation for 2D camera system
 impl Camera2d {
     /// Creates a new Camera2d with default values
     pub fn new() -> Self {

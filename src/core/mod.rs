@@ -9,10 +9,12 @@ pub mod hierarchy;
 // #[cfg(test)]
 // pub mod input_system_demo;
 
-pub use math::*;
-pub use time::*;
+// Re-exports are commented out as they're currently unused
+// Individual modules can be imported directly when needed
+// pub use math::*;
+// pub use time::*;
 // pub use time_system::*;
-pub use hierarchy::*;
+// pub use hierarchy::*;
 // pub use hierarchy_system::*;
 // pub use input_action::*;
 // pub use input_system::*;

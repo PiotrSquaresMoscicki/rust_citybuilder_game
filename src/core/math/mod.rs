@@ -6,10 +6,8 @@ pub mod camera2d;
 pub mod sprite2d;
 pub mod shape2d;
 
+// Only re-export commonly used types - others can be imported directly
 pub use vector2d::Vector2d;
-pub use angle2d::Angle2d;
 pub use transform2d::Transform2d;
-pub use transform2d_component::Transform2dComponent;
-pub use camera2d::Camera2d;
-pub use sprite2d::{Sprite2d, Color};
-pub use shape2d::{Shape2d, ShapeType, FillStyle, StrokeStyle};
+pub use sprite2d::Color;
+pub use shape2d::{ShapeType, FillStyle, StrokeStyle};

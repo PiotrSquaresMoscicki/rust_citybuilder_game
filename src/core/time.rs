@@ -177,6 +177,7 @@ pub fn initialize_time_manager() {
 }
 
 /// Get a reference to the global time manager
+#[allow(static_mut_refs)]
 pub fn get_time_manager() -> Option<&'static TimeManager> {
     unsafe {
         GLOBAL_TIME_MANAGER.as_ref()
@@ -184,6 +185,7 @@ pub fn get_time_manager() -> Option<&'static TimeManager> {
 }
 
 /// Get a mutable reference to the global time manager
+#[allow(static_mut_refs)]
 pub fn get_time_manager_mut() -> Option<&'static mut TimeManager> {
     unsafe {
         GLOBAL_TIME_MANAGER.as_mut()

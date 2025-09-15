@@ -4,10 +4,12 @@ use super::{transform2d::Transform2d, vector2d::Vector2d, angle2d::Angle2d};
 
 /// ECS Component wrapper for Transform2d
 #[derive(Debug, Clone, PartialEq)]
+#[allow(dead_code)] // Core component for 2D transforms in the game engine
 pub struct Transform2dComponent {
     transform: Transform2d,
 }
 
+#[allow(dead_code)] // Core component implementation for 2D transforms
 impl Transform2dComponent {
     /// Creates a new Transform2dComponent with identity transform
     pub fn new() -> Self {
