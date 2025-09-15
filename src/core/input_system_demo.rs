@@ -1,4 +1,4 @@
-use crate::ecs::World;
+use crate::ecs::{World, System, Mut};
 use crate::core::input_action::{InputComponent, InputAction};
 use crate::core::input_system::{InputSystem, create_input_entity};
 use crate::input::{InputEvent, Key, MouseButton, initialize_global_input_manager};
@@ -253,14 +253,15 @@ fn test_input_system_usage_example() {
     // Create world and input system
     let mut world = World::new();
     let input_entity = create_input_entity(&mut world);
-    let input_system = InputSystem::new();
+    let mut input_system = InputSystem::new();
 
     // Add input system to world (in a real game, this would be done in the main loop)
     println!("Input system created");
     println!("System dependencies: []"); // No dependencies for input system
 
-    // Simulate game loop frame
-    input_system.update(&world);
+    // Simulate game loop frame using ECS iterators
+    let iter = world.iter_entities_1::<crate::ecs::Mut<InputComponent>>();
+    input_system.update(iter);
 
     // Read input state for game logic
     if let Some(input_comp) = world.get_component::<InputComponent>(input_entity) {
