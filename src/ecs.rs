@@ -422,6 +422,11 @@ impl World {
         let entities = self.entities_with_components(&type_ids);
         EntIt::<(A1, A2, A3, A4)>::new_4(self as *const World, entities)
     }
+    
+    /// Get all entities in the world (for compatibility with legacy code)
+    pub fn get_all_entities(&self) -> &Vec<Entity> {
+        &self.entities
+    }
 }
 
 #[cfg(test)]
