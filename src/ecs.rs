@@ -4,11 +4,13 @@ use std::marker::PhantomData;
 use std::cell::{RefCell, Ref, RefMut};
 
 /// Entity is just a unique identifier
+#[allow(dead_code)] // Used across modules but compiler doesn't always see it
 pub type Entity = u32;
 
 /// Component trait for validation, getters, setters, and utility functions
 pub trait Component: Any + Send + Sync {
     /// Validates the component state
+    #[allow(dead_code)] // Framework method, may be used by component implementations
     fn validate(&self) -> bool {
         true // Default implementation
     }
@@ -20,15 +22,18 @@ pub trait Component: Any + Send + Sync {
     fn as_any_mut(&mut self) -> &mut dyn Any;
     
     /// Create a deep copy of this component for diffing purposes
+    #[allow(dead_code)] // Framework method for future diffing system
     fn clone_box(&self) -> Box<dyn Component>;
 }
 
 /// Mut<T> wrapper to explicitly mark components that should be accessed mutably
+#[allow(dead_code)] // Framework type for future mutable access patterns
 pub struct Mut<T> {
     _phantom: PhantomData<T>,
 }
 
 /// Trait to determine if a type represents mutable access
+#[allow(dead_code)] // Framework trait for future access pattern system
 pub trait AccessMode {
     type Component: Component + 'static;
     
@@ -60,10 +65,12 @@ impl<T: Component + 'static> AccessMode for Mut<T> {
 }
 
 /// Storage for a specific component type using RefCell for interior mutability
+#[allow(dead_code)] // Framework storage component, part of ECS design
 pub struct ComponentPool {
     components: HashMap<Entity, RefCell<Box<dyn Component>>>,
 }
 
+#[allow(dead_code)] // Framework implementation, part of ECS design  
 impl ComponentPool {
     pub fn new() -> Self {
         Self {
@@ -97,6 +104,7 @@ impl ComponentPool {
 }
 
 /// System trait with Dependencies and Iterators associated types as specified
+#[allow(dead_code)] // Framework trait for system architecture
 pub trait System {
     type Dependencies;
     type Iterators;
@@ -105,6 +113,7 @@ pub trait System {
 }
 
 /// Helper trait for system dependency resolution 
+#[allow(dead_code)] // Framework trait for dependency injection
 pub trait SystemDependencies {
     /// Get the list of system type names this depends on
     fn get_dependency_names() -> Vec<&'static str>;
@@ -139,11 +148,13 @@ impl<T1: SystemMarker, T2: SystemMarker, T3: SystemMarker> SystemDependencies fo
 }
 
 /// Marker trait for systems to provide their type name
+#[allow(dead_code)] // Framework trait for system identification
 pub trait SystemMarker {
     fn name() -> &'static str;
 }
 
 /// Entity Iterator that returns component tuples (variable number of components 0-64)
+#[allow(dead_code)] // Framework iterator for ECS queries
 pub struct EntIt<T> {
     world: *const World,
     entities: Vec<Entity>,
@@ -153,6 +164,7 @@ pub struct EntIt<T> {
 
 /// Implementation for EntIt with 2 components (main case from problem statement)
 impl<A1: AccessMode, A2: AccessMode> EntIt<(A1, A2)> {
+    #[allow(dead_code)] // Framework method for ECS query system
     fn new_2(world: *const World, entities: Vec<Entity>) -> Self {
         Self {
             world,
@@ -165,6 +177,7 @@ impl<A1: AccessMode, A2: AccessMode> EntIt<(A1, A2)> {
 
 /// Implementation for EntIt with 4 components (extended case from problem statement)
 impl<A1: AccessMode, A2: AccessMode, A3: AccessMode, A4: AccessMode> EntIt<(A1, A2, A3, A4)> {
+    #[allow(dead_code)] // Framework method for ECS query system
     fn new_4(world: *const World, entities: Vec<Entity>) -> Self {
         Self {
             world,
@@ -260,11 +273,13 @@ impl<A1: AccessMode, A2: AccessMode, A3: AccessMode, A4: AccessMode> Iterator fo
 }
 
 /// Wrapper for component references that can be either mutable or immutable
+#[allow(dead_code)] // Framework enum for component access patterns
 pub enum EntityComponentRef<T: Component> {
     Immutable(*const T),
     Mutable(*mut T),
 }
 
+#[allow(dead_code)] // Framework implementation for component access
 impl<T: Component> EntityComponentRef<T> {
     /// Get an immutable reference to the component
     pub fn get(&self) -> &T {
@@ -288,12 +303,14 @@ impl<T: Component> EntityComponentRef<T> {
 }
 
 /// World contains entities, components, and systems
+#[allow(dead_code)] // Core ECS World struct, used across modules but compiler analysis can miss it
 pub struct World {
     next_entity_id: Entity,
     entities: Vec<Entity>,
     component_pools: HashMap<TypeId, ComponentPool>,
 }
 
+#[allow(dead_code)] // Core ECS World implementation, used across modules
 impl World {
     /// Create a new empty world
     pub fn new() -> Self {

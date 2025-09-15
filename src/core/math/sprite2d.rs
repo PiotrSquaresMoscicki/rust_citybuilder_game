@@ -65,6 +65,7 @@ impl Color {
 
 /// Sprite2d component for rendering 2D sprites
 #[derive(Debug, Clone, PartialEq)]
+#[allow(dead_code)] // Core component for 2D sprite rendering
 pub struct Sprite2d {
     /// Texture/image identifier (could be a filename, ID, etc.)
     texture_id: String,
@@ -80,6 +81,7 @@ pub struct Sprite2d {
     uv_rect: (Vector2d, Vector2d), // (min_uv, max_uv)
 }
 
+#[allow(dead_code)] // Core component implementation for 2D sprite rendering
 impl Sprite2d {
     /// Creates a new Sprite2d with default values
     pub fn new(texture_id: String, size: Vector2d) -> Self {
