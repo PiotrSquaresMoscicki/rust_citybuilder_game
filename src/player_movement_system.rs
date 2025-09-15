@@ -1,4 +1,4 @@
-use crate::ecs_clean::World;
+use crate::ecs::World;
 use crate::game_components::{PlayerComponent, GridComponent, ObstacleComponent};
 use crate::input::{get_global_input_manager, Key};
 use crate::core::math::Vector2d;
@@ -132,7 +132,7 @@ impl Direction {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ecs_clean::World;
+    use crate::ecs::World;
     
     #[test]
     fn test_direction_vectors() {

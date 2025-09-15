@@ -1,4 +1,4 @@
-use crate::ecs_clean::World;
+use crate::ecs::World;
 use crate::game_components::{PlayerComponent, GridComponent, ObstacleComponent};
 use crate::player_movement_system::PlayerMovementSystem;
 use crate::game_renderer::GameRenderer;

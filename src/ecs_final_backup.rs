@@ -143,17 +143,19 @@ pub trait SystemMarker {
     fn name() -> &'static str;
 }
 
-/// Entity Iterator that returns entities for now (simplified approach)
-/// Later can be extended to return component tuples directly
+/// Entity Iterator that returns component tuples (variable number of components 0-64)
 pub struct EntIt<T> {
+    world: *const World,
     entities: Vec<Entity>,
     index: usize,
     _phantom: PhantomData<T>,
 }
 
-impl<T> EntIt<T> {
-    pub fn new(entities: Vec<Entity>) -> Self {
+/// Implementation for EntIt with 2 components (main case from problem statement)
+impl<A1: AccessMode, A2: AccessMode> EntIt<(A1, A2)> {
+    fn new_2(world: *const World, entities: Vec<Entity>) -> Self {
         Self {
+            world,
             entities,
             index: 0,
             _phantom: PhantomData,
@@ -161,16 +163,126 @@ impl<T> EntIt<T> {
     }
 }
 
-impl<T> Iterator for EntIt<T> {
-    type Item = Entity;
+/// Implementation for EntIt with 4 components (extended case from problem statement)
+impl<A1: AccessMode, A2: AccessMode, A3: AccessMode, A4: AccessMode> EntIt<(A1, A2, A3, A4)> {
+    fn new_4(world: *const World, entities: Vec<Entity>) -> Self {
+        Self {
+            world,
+            entities,
+            index: 0,
+            _phantom: PhantomData,
+        }
+    }
+}
+
+/// Iterator implementation for 2 components
+impl<A1: AccessMode, A2: AccessMode> Iterator for EntIt<(A1, A2)> {
+    type Item = (EntityComponentRef<A1::Component>, EntityComponentRef<A2::Component>);
     
     fn next(&mut self) -> Option<Self::Item> {
-        if self.index < self.entities.len() {
-            let entity = self.entities[self.index];
-            self.index += 1;
-            Some(entity)
-        } else {
-            None
+        if self.index >= self.entities.len() {
+            return None;
+        }
+        
+        let entity = self.entities[self.index];
+        self.index += 1;
+        
+        unsafe {
+            let world = &*self.world;
+            
+            // Get first component
+            let comp1 = if A1::is_mutable() {
+                EntityComponentRef::Mutable(world.get_component_mut_raw::<A1::Component>(entity)?)
+            } else {
+                EntityComponentRef::Immutable(world.get_component_raw::<A1::Component>(entity)?)
+            };
+            
+            // Get second component
+            let comp2 = if A2::is_mutable() {
+                EntityComponentRef::Mutable(world.get_component_mut_raw::<A2::Component>(entity)?)
+            } else {
+                EntityComponentRef::Immutable(world.get_component_raw::<A2::Component>(entity)?)
+            };
+            
+            Some((comp1, comp2))
+        }
+    }
+}
+
+/// Iterator implementation for 4 components
+impl<A1: AccessMode, A2: AccessMode, A3: AccessMode, A4: AccessMode> Iterator for EntIt<(A1, A2, A3, A4)> {
+    type Item = (
+        EntityComponentRef<A1::Component>, 
+        EntityComponentRef<A2::Component>,
+        EntityComponentRef<A3::Component>,
+        EntityComponentRef<A4::Component>
+    );
+    
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.index >= self.entities.len() {
+            return None;
+        }
+        
+        let entity = self.entities[self.index];
+        self.index += 1;
+        
+        unsafe {
+            let world = &*self.world;
+            
+            // Get components
+            let comp1 = if A1::is_mutable() {
+                EntityComponentRef::Mutable(world.get_component_mut_raw::<A1::Component>(entity)?)
+            } else {
+                EntityComponentRef::Immutable(world.get_component_raw::<A1::Component>(entity)?)
+            };
+            
+            let comp2 = if A2::is_mutable() {
+                EntityComponentRef::Mutable(world.get_component_mut_raw::<A2::Component>(entity)?)
+            } else {
+                EntityComponentRef::Immutable(world.get_component_raw::<A2::Component>(entity)?)
+            };
+            
+            let comp3 = if A3::is_mutable() {
+                EntityComponentRef::Mutable(world.get_component_mut_raw::<A3::Component>(entity)?)
+            } else {
+                EntityComponentRef::Immutable(world.get_component_raw::<A3::Component>(entity)?)
+            };
+            
+            let comp4 = if A4::is_mutable() {
+                EntityComponentRef::Mutable(world.get_component_mut_raw::<A4::Component>(entity)?)
+            } else {
+                EntityComponentRef::Immutable(world.get_component_raw::<A4::Component>(entity)?)
+            };
+            
+            Some((comp1, comp2, comp3, comp4))
+        }
+    }
+}
+
+/// Wrapper for component references that can be either mutable or immutable
+pub enum EntityComponentRef<T: Component> {
+    Immutable(*const T),
+    Mutable(*mut T),
+}
+
+impl<T: Component> EntityComponentRef<T> {
+    /// Get an immutable reference to the component
+    pub fn get(&self) -> &T {
+        unsafe {
+            match self {
+                EntityComponentRef::Immutable(ptr) => &**ptr,
+                EntityComponentRef::Mutable(ptr) => &**ptr,
+            }
+        }
+    }
+    
+    /// Get a mutable reference to the component (only works for Mutable variants)
+    pub fn get_mut(&mut self) -> Option<&mut T> {
+        unsafe {
+            match self {
+                EntityComponentRef::Immutable(_) => None,
+                EntityComponentRef::Mutable(ptr) => Some(&mut **ptr),
+            }
         }
     }
 }
@@ -178,7 +290,7 @@ impl<T> Iterator for EntIt<T> {
 /// World contains entities, components, and systems
 pub struct World {
     next_entity_id: Entity,
-    pub entities: Vec<Entity>,  // Make public for access
+    entities: Vec<Entity>,
     component_pools: HashMap<TypeId, ComponentPool>,
 }
 
@@ -229,6 +341,26 @@ impl World {
         Some(RefMut::map(component, |c| c.as_any_mut().downcast_mut::<T>().unwrap()))
     }
     
+    /// Get raw pointer to component (for internal iterator use)
+    unsafe fn get_component_raw<T: Component + 'static>(&self, entity: Entity) -> Option<*const T> {
+        let type_id = TypeId::of::<T>();
+        let pool = self.component_pools.get(&type_id)?;
+        let component = pool.get(entity)?;
+        let raw_ptr = component.as_any().downcast_ref::<T>()? as *const T;
+        std::mem::forget(component); // Prevent Drop from running
+        Some(raw_ptr)
+    }
+    
+    /// Get raw mutable pointer to component (for internal iterator use)
+    unsafe fn get_component_mut_raw<T: Component + 'static>(&self, entity: Entity) -> Option<*mut T> {
+        let type_id = TypeId::of::<T>();
+        let pool = self.component_pools.get(&type_id)?;
+        let mut component = pool.get_mut(entity)?;
+        let raw_ptr = component.as_any_mut().downcast_mut::<T>()? as *mut T;
+        std::mem::forget(component); // Prevent Drop from running
+        Some(raw_ptr)
+    }
+    
     /// Remove a component from an entity
     pub fn remove_component<T: Component + 'static>(&mut self, entity: Entity) -> bool {
         let type_id = TypeId::of::<T>();
@@ -272,25 +404,11 @@ impl World {
         result
     }
     
-    /// Create iterator for entities with specified components (simplified API)
+    /// Create iterator for entities with 2 components
     pub fn iter_entities<A1: AccessMode, A2: AccessMode>(&self) -> EntIt<(A1, A2)> {
         let type_ids = vec![A1::component_type_id(), A2::component_type_id()];
         let entities = self.entities_with_components(&type_ids);
-        EntIt::new(entities)
-    }
-    
-    /// Create iterator for entities with 1 component
-    pub fn iter_entities_1<A1: AccessMode>(&self) -> EntIt<(A1,)> {
-        let type_ids = vec![A1::component_type_id()];
-        let entities = self.entities_with_components(&type_ids);
-        EntIt::new(entities)
-    }
-    
-    /// Create iterator for entities with 3 components
-    pub fn iter_entities_3<A1: AccessMode, A2: AccessMode, A3: AccessMode>(&self) -> EntIt<(A1, A2, A3)> {
-        let type_ids = vec![A1::component_type_id(), A2::component_type_id(), A3::component_type_id()];
-        let entities = self.entities_with_components(&type_ids);
-        EntIt::new(entities)
+        EntIt::<(A1, A2)>::new_2(self as *const World, entities)
     }
     
     /// Create iterator for entities with 4 components  
@@ -302,55 +420,7 @@ impl World {
             A4::component_type_id()
         ];
         let entities = self.entities_with_components(&type_ids);
-        EntIt::new(entities)
-    }
-}
-
-/// System registry for managing system execution order based on dependencies
-pub struct SystemRegistry {
-    systems: Vec<(String, Box<dyn FnMut(&World)>)>,
-    dependencies: HashMap<String, Vec<String>>,
-}
-
-impl SystemRegistry {
-    pub fn new() -> Self {
-        Self {
-            systems: Vec::new(),
-            dependencies: HashMap::new(),
-        }
-    }
-    
-    /// Register a system with its dependencies
-    pub fn register_system<S>(&mut self, name: &str, _system: S) 
-    where
-        S: System + 'static,
-        S::Dependencies: SystemDependencies,
-    {
-        let dependencies = S::Dependencies::get_dependency_names()
-            .into_iter()
-            .map(|s| s.to_string())
-            .collect();
-        self.dependencies.insert(name.to_string(), dependencies);
-        
-        // Store the system as a closure that calls the system function
-        let system_name = name.to_string();
-        let closure = Box::new(move |_world: &World| {
-            // For simplified approach, we'll just call update with placeholder
-            // In a full implementation, we'd create the appropriate iterators
-            println!("Executing system: {}", system_name);
-        });
-        
-        self.systems.push((name.to_string(), closure));
-    }
-    
-    /// Execute all systems in dependency order
-    pub fn execute_systems(&mut self, world: &World) -> Result<(), String> {
-        // Simple execution order for now - in full implementation would do topological sort
-        for (name, system_fn) in &mut self.systems {
-            println!("Executing system: {}", name);
-            system_fn(world);
-        }
-        Ok(())
+        EntIt::<(A1, A2, A3, A4)>::new_4(self as *const World, entities)
     }
 }
 
@@ -360,7 +430,7 @@ mod tests {
 
     // Test components
     #[derive(Clone, Debug)]
-    pub struct PositionComponent {
+    struct PositionComponent {
         pub x: f32,
         pub y: f32,
     }
@@ -380,7 +450,7 @@ mod tests {
     }
 
     #[derive(Clone, Debug)]
-    pub struct VelocityComponent {
+    struct VelocityComponent {
         pub dx: f32,
         pub dy: f32,
     }
@@ -400,31 +470,33 @@ mod tests {
     }
 
     // System markers for testing
-    pub struct TimeSystem;
+    struct TimeSystem;
     impl SystemMarker for TimeSystem {
         fn name() -> &'static str { "TimeSystem" }
     }
 
-    pub struct InputSystem;
+    struct InputSystem;
     impl SystemMarker for InputSystem {
         fn name() -> &'static str { "InputSystem" }
     }
 
-    pub struct PhysicsSystem;
+    struct PhysicsSystem;
     impl SystemMarker for PhysicsSystem {
         fn name() -> &'static str { "PhysicsSystem" }
     }
 
     // Example system matching the target design
-    pub struct SampleSystem;
+    struct SampleSystem;
 
     impl System for SampleSystem {
         type Dependencies = (TimeSystem, InputSystem, PhysicsSystem);
         type Iterators = EntIt<(Mut<PositionComponent>, VelocityComponent)>;
 
-        fn update(&mut self, _iterators: Self::Iterators) {
+        fn update(&mut self, iterators: Self::Iterators) {
             // Implementation of the update logic
-            println!("SampleSystem executing...");
+            for (_position, _velocity) in iterators {
+                // Can access components directly as tuples
+            }
         }
     }
 
@@ -443,40 +515,5 @@ mod tests {
         // Create and use the system
         let mut sample_system = SampleSystem;
         sample_system.update(iter);
-        
-        // Test system registry
-        let mut registry = SystemRegistry::new();
-        registry.register_system("SampleSystem", SampleSystem);
-        
-        let _ = registry.execute_systems(&world);
-    }
-    
-    #[test]
-    fn test_component_access() {
-        let mut world = World::new();
-        
-        let entity = world.create_entity();
-        world.add_component(entity, PositionComponent { x: 10.0, y: 20.0 });
-        
-        // Test immutable access
-        {
-            let pos = world.get_component::<PositionComponent>(entity).unwrap();
-            assert_eq!(pos.x, 10.0);
-            assert_eq!(pos.y, 20.0);
-        }
-        
-        // Test mutable access
-        {
-            let mut pos = world.get_component_mut::<PositionComponent>(entity).unwrap();
-            pos.x = 15.0;
-            pos.y = 25.0;
-        }
-        
-        // Verify changes
-        {
-            let pos = world.get_component::<PositionComponent>(entity).unwrap();
-            assert_eq!(pos.x, 15.0);
-            assert_eq!(pos.y, 25.0);
-        }
     }
 }

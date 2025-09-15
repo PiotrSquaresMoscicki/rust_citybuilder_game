@@ -1,4 +1,4 @@
-use crate::ecs_clean::World;
+use crate::ecs::World;
 use crate::game_components::{PlayerComponent, GridComponent, ObstacleComponent, GridRenderableComponent};
 use crate::rendering::{get_global_rendering_manager, RenderCommand};
 use std::collections::HashMap;
@@ -187,7 +187,7 @@ impl GameRenderer {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ecs_clean::World;
+    use crate::ecs::World;
     
     #[test]
     fn test_game_renderer_creation() {

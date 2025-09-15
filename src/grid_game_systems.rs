@@ -1,5 +1,5 @@
 /// Game systems for the 2D grid game using the clean ECS implementation
-use crate::ecs_simple::*;
+use crate::ecs::*;
 use crate::grid_game_components::*;
 
 /// Input System - handles input processing (no dependencies)

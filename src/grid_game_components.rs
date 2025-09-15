@@ -1,5 +1,5 @@
 /// Game components for the 2D grid game using the clean ECS implementation
-use crate::ecs_simple::*;
+use crate::ecs::*;
 use std::any::Any;
 
 /// Position component for entities in the 2D grid
