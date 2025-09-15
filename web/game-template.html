@@ -1,0 +1,799 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rust City Builder - Game Template</title>
+    <style>
+        /* Reset and base styles */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        html, body {
+            height: 100%;
+            overflow: hidden;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #1a1a1a;
+            color: #ffffff;
+        }
+        
+        /* Full-screen canvas container */
+        #gameContainer {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        
+        /* Main game canvas - takes full space */
+        #gameCanvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+            background: #000000;
+            cursor: crosshair;
+            image-rendering: pixelated; /* For pixel-perfect games */
+        }
+        
+        /* Game UI overlay */
+        #gameUI {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none; /* Allow clicks through to canvas */
+            z-index: 10;
+        }
+        
+        /* UI panels that can receive input */
+        .ui-panel {
+            position: absolute;
+            pointer-events: auto;
+            background: rgba(0, 0, 0, 0.8);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 8px;
+            padding: 15px;
+            backdrop-filter: blur(5px);
+            transition: all 0.3s ease;
+        }
+        
+        .ui-panel:hover {
+            background: rgba(0, 0, 0, 0.9);
+            border-color: rgba(255, 255, 255, 0.3);
+        }
+        
+        /* Top-left info panel */
+        #infoPanel {
+            top: 20px;
+            left: 20px;
+            min-width: 200px;
+        }
+        
+        /* Top-right controls panel */
+        #controlsPanel {
+            top: 20px;
+            right: 20px;
+            min-width: 150px;
+        }
+        
+        /* Bottom status bar */
+        #statusBar {
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            text-align: center;
+            min-width: 300px;
+        }
+        
+        /* Debug panel (hidden by default) */
+        #debugPanel {
+            top: 50%;
+            right: 20px;
+            transform: translateY(-50%);
+            min-width: 250px;
+            max-height: 300px;
+            overflow-y: auto;
+            display: none;
+        }
+        
+        /* Button styles */
+        .ui-button {
+            background: rgba(103, 126, 234, 0.8);
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 4px;
+            transition: all 0.2s ease;
+            font-size: 14px;
+        }
+        
+        .ui-button:hover {
+            background: rgba(103, 126, 234, 1);
+            transform: translateY(-1px);
+        }
+        
+        .ui-button:active {
+            transform: translateY(0px);
+        }
+        
+        .ui-button.danger {
+            background: rgba(220, 53, 69, 0.8);
+        }
+        
+        .ui-button.danger:hover {
+            background: rgba(220, 53, 69, 1);
+        }
+        
+        .ui-button.secondary {
+            background: rgba(108, 117, 125, 0.8);
+        }
+        
+        .ui-button.secondary:hover {
+            background: rgba(108, 117, 125, 1);
+        }
+        
+        /* Loading screen */
+        #loadingScreen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 100;
+            transition: opacity 0.5s ease;
+        }
+        
+        #loadingScreen.hidden {
+            opacity: 0;
+            pointer-events: none;
+        }
+        
+        .loading-spinner {
+            width: 50px;
+            height: 50px;
+            border: 4px solid rgba(255, 255, 255, 0.3);
+            border-top: 4px solid #ffffff;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-bottom: 20px;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .loading-text {
+            font-size: 18px;
+            margin-bottom: 10px;
+        }
+        
+        .loading-subtext {
+            font-size: 14px;
+            opacity: 0.8;
+        }
+        
+        /* Connection status indicator */
+        .status-indicator {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 8px;
+            background: #dc3545;
+            animation: pulse 2s infinite;
+        }
+        
+        .status-indicator.connected {
+            background: #28a745;
+            animation: none;
+        }
+        
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+        
+        /* Debug text styles */
+        .debug-text {
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            line-height: 1.4;
+            color: #00ff00;
+        }
+        
+        .debug-section {
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .debug-section:last-child {
+            border-bottom: none;
+        }
+        
+        .debug-title {
+            font-weight: bold;
+            color: #ffffff;
+            margin-bottom: 5px;
+        }
+        
+        /* Responsive design */
+        @media (max-width: 768px) {
+            .ui-panel {
+                padding: 10px;
+                font-size: 14px;
+            }
+            
+            #infoPanel {
+                top: 10px;
+                left: 10px;
+                min-width: 150px;
+            }
+            
+            #controlsPanel {
+                top: 10px;
+                right: 10px;
+                min-width: 120px;
+            }
+            
+            #statusBar {
+                bottom: 10px;
+                min-width: 250px;
+            }
+            
+            .ui-button {
+                padding: 6px 12px;
+                font-size: 12px;
+            }
+        }
+        
+        /* Hide scrollbars */
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+        
+        ::-webkit-scrollbar-track {
+            background: rgba(255, 255, 255, 0.1);
+        }
+        
+        ::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.3);
+            border-radius: 3px;
+        }
+        
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(255, 255, 255, 0.5);
+        }
+    </style>
+</head>
+<body>
+    <!-- Loading Screen -->
+    <div id="loadingScreen">
+        <div class="loading-spinner"></div>
+        <div class="loading-text">Loading Game...</div>
+        <div class="loading-subtext">Initializing systems and connecting to server</div>
+    </div>
+    
+    <!-- Main Game Container -->
+    <div id="gameContainer">
+        <!-- Game Canvas - Full Screen -->
+        <canvas id="gameCanvas"></canvas>
+        
+        <!-- Game UI Overlay -->
+        <div id="gameUI">
+            <!-- Info Panel - Top Left -->
+            <div id="infoPanel" class="ui-panel">
+                <div style="font-weight: bold; margin-bottom: 10px;">🎮 Game Info</div>
+                <div>
+                    <span class="status-indicator" id="connectionStatus"></span>
+                    <span id="connectionText">Connecting...</span>
+                </div>
+                <div style="margin-top: 8px;">
+                    <div id="fpsCounter">FPS: --</div>
+                    <div id="playerPosition">Position: (0, 0)</div>
+                </div>
+            </div>
+            
+            <!-- Controls Panel - Top Right -->
+            <div id="controlsPanel" class="ui-panel">
+                <div style="font-weight: bold; margin-bottom: 10px;">🎛️ Controls</div>
+                <button id="connectBtn" class="ui-button">Connect</button>
+                <button id="disconnectBtn" class="ui-button secondary" disabled>Disconnect</button>
+                <br>
+                <button id="fullscreenBtn" class="ui-button">Fullscreen</button>
+                <button id="debugBtn" class="ui-button secondary">Debug</button>
+            </div>
+            
+            <!-- Status Bar - Bottom Center -->
+            <div id="statusBar" class="ui-panel">
+                <div id="statusMessage">Ready to play! Use WASD to move.</div>
+            </div>
+            
+            <!-- Debug Panel - Right Side (Hidden) -->
+            <div id="debugPanel" class="ui-panel">
+                <div style="font-weight: bold; margin-bottom: 10px;">🐛 Debug Info</div>
+                
+                <div class="debug-section">
+                    <div class="debug-title">Input State</div>
+                    <div id="debugInput" class="debug-text">No input data</div>
+                </div>
+                
+                <div class="debug-section">
+                    <div class="debug-title">Rendering</div>
+                    <div id="debugRendering" class="debug-text">No rendering data</div>
+                </div>
+                
+                <div class="debug-section">
+                    <div class="debug-title">Performance</div>
+                    <div id="debugPerformance" class="debug-text">No performance data</div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Include JavaScript Libraries -->
+    <script src="js/input-manager.js"></script>
+    <script src="js/rendering-manager.js"></script>
+    <script src="js/web-client.js"></script>
+    
+    <script>
+        /**
+         * Game Template Application
+         * Provides a complete game framework with full-screen canvas,
+         * input management, rendering, and server communication
+         */
+        class GameTemplate {
+            constructor() {
+                // Core components
+                this.canvas = document.getElementById('gameCanvas');
+                this.gameContainer = document.getElementById('gameContainer');
+                this.gameUI = document.getElementById('gameUI');
+                
+                // Managers
+                this.inputManager = null;
+                this.renderingClient = null;
+                
+                // State
+                this.isInitialized = false;
+                this.isFullscreen = false;
+                this.debugMode = false;
+                this.frameCount = 0;
+                this.lastFpsUpdate = 0;
+                this.fps = 0;
+                
+                // Player state for demo
+                this.playerPosition = { x: 0, y: 0 };
+                
+                this.initialize();
+            }
+            
+            async initialize() {
+                console.log('🎮 Initializing Game Template...');
+                
+                try {
+                    this.setupCanvas();
+                    this.setupInputManager();
+                    this.setupRenderingClient();
+                    this.setupUI();
+                    this.startGameLoop();
+                    
+                    this.isInitialized = true;
+                    this.hideLoadingScreen();
+                    
+                    console.log('✅ Game Template initialized successfully');
+                    this.setStatusMessage('Game loaded! Press Connect to start.');
+                    
+                } catch (error) {
+                    console.error('❌ Failed to initialize game template:', error);
+                    this.setStatusMessage('Failed to load game. Check console for details.');
+                }
+            }
+            
+            setupCanvas() {
+                // Set up canvas for full-screen rendering
+                this.resizeCanvas();
+                
+                // Handle window resize
+                window.addEventListener('resize', () => {
+                    this.resizeCanvas();
+                });
+                
+                console.log('🖼️ Canvas setup complete');
+            }
+            
+            resizeCanvas() {
+                const rect = this.gameContainer.getBoundingClientRect();
+                
+                // Set canvas size to match container
+                this.canvas.width = rect.width;
+                this.canvas.height = rect.height;
+                
+                // Update canvas display size
+                this.canvas.style.width = rect.width + 'px';
+                this.canvas.style.height = rect.height + 'px';
+                
+                console.log(`📐 Canvas resized to ${rect.width}x${rect.height}`);
+            }
+            
+            setupInputManager() {
+                // Create input manager targeting the canvas
+                this.inputManager = new InputManager(this.canvas, {
+                    preventDefaultKeyboard: true,
+                    preventDefaultMouse: false,
+                    preventDefaultTouch: true
+                });
+                
+                // Set up input callbacks
+                this.inputManager.onInput('keydown', (event) => {
+                    this.handleKeyDown(event);
+                });
+                
+                this.inputManager.onInput('keyup', (event) => {
+                    this.handleKeyUp(event);
+                });
+                
+                this.inputManager.onInput('mousedown', (event) => {
+                    this.handleMouseDown(event);
+                });
+                
+                this.inputManager.onInput('mousemove', (event) => {
+                    this.handleMouseMove(event);
+                });
+                
+                this.inputManager.initialize();
+                console.log('🎮 Input Manager setup complete');
+            }
+            
+            setupRenderingClient() {
+                // Create rendering client
+                this.renderingClient = new WebRenderingClient(this.canvas, {
+                    autoConnect: false,
+                    logMessages: false // Reduce console spam
+                });
+                
+                // Set up event handlers
+                this.renderingClient.setEventHandlers({
+                    onConnectionChange: (connected, clientId) => {
+                        this.updateConnectionStatus(connected, clientId);
+                    },
+                    onRenderCommand: (type, params) => {
+                        // Handle render commands
+                    },
+                    onError: (error) => {
+                        console.error('Rendering client error:', error);
+                        this.setStatusMessage('Connection error: ' + error);
+                    }
+                });
+                
+                console.log('🎨 Rendering Client setup complete');
+            }
+            
+            setupUI() {
+                // Connect button
+                document.getElementById('connectBtn').addEventListener('click', () => {
+                    this.connect();
+                });
+                
+                // Disconnect button
+                document.getElementById('disconnectBtn').addEventListener('click', () => {
+                    this.disconnect();
+                });
+                
+                // Fullscreen button
+                document.getElementById('fullscreenBtn').addEventListener('click', () => {
+                    this.toggleFullscreen();
+                });
+                
+                // Debug button
+                document.getElementById('debugBtn').addEventListener('click', () => {
+                    this.toggleDebug();
+                });
+                
+                // Handle fullscreen change events
+                document.addEventListener('fullscreenchange', () => {
+                    this.isFullscreen = !!document.fullscreenElement;
+                    this.resizeCanvas(); // Resize canvas when entering/exiting fullscreen
+                });
+                
+                console.log('🖥️ UI setup complete');
+            }
+            
+            startGameLoop() {
+                const gameLoop = (timestamp) => {
+                    this.update(timestamp);
+                    this.render(timestamp);
+                    
+                    this.frameCount++;
+                    
+                    // Update FPS counter every second
+                    if (timestamp - this.lastFpsUpdate >= 1000) {
+                        this.fps = Math.round((this.frameCount * 1000) / (timestamp - this.lastFpsUpdate));
+                        this.frameCount = 0;
+                        this.lastFpsUpdate = timestamp;
+                        this.updateFPS();
+                    }
+                    
+                    requestAnimationFrame(gameLoop);
+                };
+                
+                requestAnimationFrame(gameLoop);
+                console.log('🔄 Game loop started');
+            }
+            
+            update(timestamp) {
+                // Update game logic here
+                this.handleMovement();
+                this.updateDebugInfo();
+                
+                // Reset input deltas each frame
+                if (this.inputManager) {
+                    this.inputManager.resetMouseDelta();
+                    this.inputManager.resetWheelDelta();
+                }
+            }
+            
+            render(timestamp) {
+                // Basic rendering - can be extended by games
+                const ctx = this.canvas.getContext('2d');
+                
+                // Clear canvas
+                ctx.fillStyle = '#001122';
+                ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+                
+                // Draw a simple demo scene
+                this.drawDemo(ctx);
+            }
+            
+            drawDemo(ctx) {
+                const centerX = this.canvas.width / 2;
+                const centerY = this.canvas.height / 2;
+                
+                // Draw grid
+                ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
+                ctx.lineWidth = 1;
+                
+                const gridSize = 50;
+                for (let x = 0; x < this.canvas.width; x += gridSize) {
+                    ctx.beginPath();
+                    ctx.moveTo(x, 0);
+                    ctx.lineTo(x, this.canvas.height);
+                    ctx.stroke();
+                }
+                
+                for (let y = 0; y < this.canvas.height; y += gridSize) {
+                    ctx.beginPath();
+                    ctx.moveTo(0, y);
+                    ctx.lineTo(this.canvas.width, y);
+                    ctx.stroke();
+                }
+                
+                // Draw player
+                ctx.fillStyle = '#ff6b6b';
+                ctx.fillRect(
+                    centerX + this.playerPosition.x - 15,
+                    centerY + this.playerPosition.y - 15,
+                    30,
+                    30
+                );
+                
+                // Draw player indicator
+                ctx.fillStyle = '#ffffff';
+                ctx.font = '16px Arial';
+                ctx.textAlign = 'center';
+                ctx.fillText('@', centerX + this.playerPosition.x, centerY + this.playerPosition.y + 5);
+            }
+            
+            handleMovement() {
+                if (!this.inputManager) return;
+                
+                const speed = 3;
+                let moved = false;
+                
+                if (this.inputManager.isKeyPressed('W') || this.inputManager.isKeyPressed('ArrowUp')) {
+                    this.playerPosition.y -= speed;
+                    moved = true;
+                }
+                if (this.inputManager.isKeyPressed('S') || this.inputManager.isKeyPressed('ArrowDown')) {
+                    this.playerPosition.y += speed;
+                    moved = true;
+                }
+                if (this.inputManager.isKeyPressed('A') || this.inputManager.isKeyPressed('ArrowLeft')) {
+                    this.playerPosition.x -= speed;
+                    moved = true;
+                }
+                if (this.inputManager.isKeyPressed('D') || this.inputManager.isKeyPressed('ArrowRight')) {
+                    this.playerPosition.x += speed;
+                    moved = true;
+                }
+                
+                if (moved) {
+                    this.updatePlayerPosition();
+                }
+            }
+            
+            handleKeyDown(event) {
+                const { key } = event;
+                
+                // Handle special keys
+                if (key === 'F11' || (key === 'Enter' && this.inputManager.isKeyPressed('Alt'))) {
+                    this.toggleFullscreen();
+                } else if (key === 'F3') {
+                    this.toggleDebug();
+                } else if (key === 'Escape') {
+                    if (this.isFullscreen) {
+                        this.exitFullscreen();
+                    }
+                }
+                
+                console.log('Key pressed:', key);
+            }
+            
+            handleKeyUp(event) {
+                // Handle key release events
+            }
+            
+            handleMouseDown(event) {
+                const { button, position } = event;
+                console.log('Mouse clicked:', button, 'at', position);
+                
+                // Example: Move player to clicked position
+                const centerX = this.canvas.width / 2;
+                const centerY = this.canvas.height / 2;
+                
+                this.playerPosition.x = position.x - centerX;
+                this.playerPosition.y = position.y - centerY;
+                this.updatePlayerPosition();
+            }
+            
+            handleMouseMove(event) {
+                // Handle mouse movement
+            }
+            
+            connect() {
+                if (this.renderingClient) {
+                    this.renderingClient.connect();
+                    this.setStatusMessage('Connecting to server...');
+                }
+            }
+            
+            disconnect() {
+                if (this.renderingClient) {
+                    this.renderingClient.disconnect();
+                    this.setStatusMessage('Disconnected from server.');
+                }
+            }
+            
+            toggleFullscreen() {
+                if (!this.isFullscreen) {
+                    this.gameContainer.requestFullscreen().catch(err => {
+                        console.error('Failed to enter fullscreen:', err);
+                    });
+                } else {
+                    document.exitFullscreen().catch(err => {
+                        console.error('Failed to exit fullscreen:', err);
+                    });
+                }
+            }
+            
+            exitFullscreen() {
+                if (this.isFullscreen) {
+                    document.exitFullscreen();
+                }
+            }
+            
+            toggleDebug() {
+                this.debugMode = !this.debugMode;
+                const debugPanel = document.getElementById('debugPanel');
+                debugPanel.style.display = this.debugMode ? 'block' : 'none';
+            }
+            
+            updateConnectionStatus(connected, clientId) {
+                const statusIndicator = document.getElementById('connectionStatus');
+                const connectionText = document.getElementById('connectionText');
+                const connectBtn = document.getElementById('connectBtn');
+                const disconnectBtn = document.getElementById('disconnectBtn');
+                
+                if (connected) {
+                    statusIndicator.classList.add('connected');
+                    connectionText.textContent = `Connected (${clientId})`;
+                    connectBtn.disabled = true;
+                    disconnectBtn.disabled = false;
+                    this.setStatusMessage('Connected! Game ready to play.');
+                } else {
+                    statusIndicator.classList.remove('connected');
+                    connectionText.textContent = 'Disconnected';
+                    connectBtn.disabled = false;
+                    disconnectBtn.disabled = true;
+                    this.setStatusMessage('Disconnected. Click Connect to reconnect.');
+                }
+            }
+            
+            updateFPS() {
+                document.getElementById('fpsCounter').textContent = `FPS: ${this.fps}`;
+            }
+            
+            updatePlayerPosition() {
+                document.getElementById('playerPosition').textContent = 
+                    `Position: (${Math.round(this.playerPosition.x)}, ${Math.round(this.playerPosition.y)})`;
+            }
+            
+            updateDebugInfo() {
+                if (!this.debugMode || !this.inputManager) return;
+                
+                const stats = this.inputManager.getStatistics();
+                
+                // Input debug info
+                const inputInfo = [
+                    `Keys: ${stats.keysPressed.join(', ') || 'None'}`,
+                    `Mouse: ${stats.mouseButtonsPressed.join(', ') || 'None'}`,
+                    `Mouse Pos: (${Math.round(stats.mousePosition.x)}, ${Math.round(stats.mousePosition.y)})`,
+                    `Touches: ${stats.activeTouches}`
+                ].join('\n');
+                document.getElementById('debugInput').textContent = inputInfo;
+                
+                // Rendering debug info
+                const renderingInfo = [
+                    `Canvas: ${this.canvas.width}x${this.canvas.height}`,
+                    `Fullscreen: ${this.isFullscreen}`,
+                    `Connected: ${this.renderingClient?.getStatistics().connected}`
+                ].join('\n');
+                document.getElementById('debugRendering').textContent = renderingInfo;
+                
+                // Performance debug info
+                const performanceInfo = [
+                    `FPS: ${this.fps}`,
+                    `Frame: ${this.frameCount}`,
+                    `History: ${stats.historySize} events`
+                ].join('\n');
+                document.getElementById('debugPerformance').textContent = performanceInfo;
+            }
+            
+            setStatusMessage(message) {
+                document.getElementById('statusMessage').textContent = message;
+            }
+            
+            hideLoadingScreen() {
+                const loadingScreen = document.getElementById('loadingScreen');
+                loadingScreen.classList.add('hidden');
+                
+                // Remove loading screen after animation
+                setTimeout(() => {
+                    loadingScreen.style.display = 'none';
+                }, 500);
+            }
+        }
+        
+        // Initialize the game template when the page loads
+        window.addEventListener('load', () => {
+            console.log('🚀 Initializing Rust City Builder Game Template');
+            window.gameTemplate = new GameTemplate();
+        });
+        
+        // Handle page unload
+        window.addEventListener('beforeunload', () => {
+            if (window.gameTemplate && window.gameTemplate.inputManager) {
+                window.gameTemplate.inputManager.shutdown();
+            }
+            if (window.gameTemplate && window.gameTemplate.renderingClient) {
+                window.gameTemplate.renderingClient.shutdown();
+            }
+        });
+    </script>
+</body>
+</html>
