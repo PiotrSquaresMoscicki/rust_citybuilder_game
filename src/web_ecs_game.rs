@@ -1,4 +1,5 @@
 /// Web client integration for the clean ECS grid game
+use crate::ecs::Mut;
 use crate::grid_game_systems::GridGameWorld;
 use crate::rendering::{render_global_grid};
 use tiny_http::{Server, Response, Header, Request, Method};
@@ -24,21 +25,18 @@ impl WebEcsGameDemo {
     
     /// Process input by updating the ECS InputComponent based on current input state
     fn update_ecs_input_from_javascript(&mut self, dx: i32, dy: i32) {
-        // Find the player entity with InputComponent and update it
-        for entity in self.game_world.world.get_all_entities() {
-            if self.game_world.world.has_component::<crate::grid_game_components::PlayerComponent>(*entity) {
-                if let Some(mut input_comp) = self.game_world.world.get_component_mut::<crate::grid_game_components::InputComponent>(*entity) {
-                    // Clear previous input
-                    input_comp.clear();
-                    
-                    // Set new input based on JavaScript input
-                    if dx < 0 { input_comp.move_left = true; }
-                    if dx > 0 { input_comp.move_right = true; }
-                    if dy < 0 { input_comp.move_up = true; }
-                    if dy > 0 { input_comp.move_down = true; }
-                    
-                    break;
-                }
+        // Use ECS iterator to find player entity with InputComponent
+        let mut iter = self.game_world.world.iter_entities::<crate::grid_game_components::PlayerComponent, Mut<crate::grid_game_components::InputComponent>>();
+        if let Some((_, mut input_ref)) = iter.next() {
+            if let Some(input_comp) = input_ref.get_mut() {
+                // Clear previous input
+                input_comp.clear();
+                
+                // Set new input based on JavaScript input
+                if dx < 0 { input_comp.move_left = true; }
+                if dx > 0 { input_comp.move_right = true; }
+                if dy < 0 { input_comp.move_up = true; }
+                if dy > 0 { input_comp.move_down = true; }
             }
         }
     }

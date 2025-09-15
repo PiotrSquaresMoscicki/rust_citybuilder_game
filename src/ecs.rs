@@ -162,10 +162,36 @@ pub struct EntIt<T> {
     _phantom: PhantomData<T>,
 }
 
+/// Implementation for EntIt with 1 component
+impl<A1: AccessMode> EntIt<A1> {
+    #[allow(dead_code)] // Framework method for ECS query system
+    fn new_1(world: *const World, entities: Vec<Entity>) -> Self {
+        Self {
+            world,
+            entities,
+            index: 0,
+            _phantom: PhantomData,
+        }
+    }
+}
+
 /// Implementation for EntIt with 2 components (main case from problem statement)
 impl<A1: AccessMode, A2: AccessMode> EntIt<(A1, A2)> {
     #[allow(dead_code)] // Framework method for ECS query system
     fn new_2(world: *const World, entities: Vec<Entity>) -> Self {
+        Self {
+            world,
+            entities,
+            index: 0,
+            _phantom: PhantomData,
+        }
+    }
+}
+
+/// Implementation for EntIt with 3 components
+impl<A1: AccessMode, A2: AccessMode, A3: AccessMode> EntIt<(A1, A2, A3)> {
+    #[allow(dead_code)] // Framework method for ECS query system
+    fn new_3(world: *const World, entities: Vec<Entity>) -> Self {
         Self {
             world,
             entities,
@@ -184,6 +210,33 @@ impl<A1: AccessMode, A2: AccessMode, A3: AccessMode, A4: AccessMode> EntIt<(A1, 
             entities,
             index: 0,
             _phantom: PhantomData,
+        }
+    }
+}
+
+/// Iterator implementation for 1 component
+impl<A1: AccessMode> Iterator for EntIt<A1> {
+    type Item = EntityComponentRef<A1::Component>;
+    
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.index >= self.entities.len() {
+            return None;
+        }
+        
+        let entity = self.entities[self.index];
+        self.index += 1;
+        
+        unsafe {
+            let world = &*self.world;
+            
+            // Get component
+            let comp = if A1::is_mutable() {
+                EntityComponentRef::Mutable(world.get_component_mut_raw::<A1::Component>(entity)?)
+            } else {
+                EntityComponentRef::Immutable(world.get_component_raw::<A1::Component>(entity)?)
+            };
+            
+            Some(comp)
         }
     }
 }
@@ -218,6 +271,49 @@ impl<A1: AccessMode, A2: AccessMode> Iterator for EntIt<(A1, A2)> {
             };
             
             Some((comp1, comp2))
+        }
+    }
+}
+
+/// Iterator implementation for 3 components
+impl<A1: AccessMode, A2: AccessMode, A3: AccessMode> Iterator for EntIt<(A1, A2, A3)> {
+    type Item = (
+        EntityComponentRef<A1::Component>, 
+        EntityComponentRef<A2::Component>,
+        EntityComponentRef<A3::Component>
+    );
+    
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.index >= self.entities.len() {
+            return None;
+        }
+        
+        let entity = self.entities[self.index];
+        self.index += 1;
+        
+        unsafe {
+            let world = &*self.world;
+            
+            // Get components
+            let comp1 = if A1::is_mutable() {
+                EntityComponentRef::Mutable(world.get_component_mut_raw::<A1::Component>(entity)?)
+            } else {
+                EntityComponentRef::Immutable(world.get_component_raw::<A1::Component>(entity)?)
+            };
+            
+            let comp2 = if A2::is_mutable() {
+                EntityComponentRef::Mutable(world.get_component_mut_raw::<A2::Component>(entity)?)
+            } else {
+                EntityComponentRef::Immutable(world.get_component_raw::<A2::Component>(entity)?)
+            };
+            
+            let comp3 = if A3::is_mutable() {
+                EntityComponentRef::Mutable(world.get_component_mut_raw::<A3::Component>(entity)?)
+            } else {
+                EntityComponentRef::Immutable(world.get_component_raw::<A3::Component>(entity)?)
+            };
+            
+            Some((comp1, comp2, comp3))
         }
     }
 }
@@ -421,11 +517,29 @@ impl World {
         result
     }
     
+    /// Create iterator for entities with 1 component
+    pub fn iter_entities_1<A1: AccessMode>(&self) -> EntIt<A1> {
+        let type_ids = vec![A1::component_type_id()];
+        let entities = self.entities_with_components(&type_ids);
+        EntIt::<A1>::new_1(self as *const World, entities)
+    }
+    
     /// Create iterator for entities with 2 components
     pub fn iter_entities<A1: AccessMode, A2: AccessMode>(&self) -> EntIt<(A1, A2)> {
         let type_ids = vec![A1::component_type_id(), A2::component_type_id()];
         let entities = self.entities_with_components(&type_ids);
         EntIt::<(A1, A2)>::new_2(self as *const World, entities)
+    }
+    
+    /// Create iterator for entities with 3 components
+    pub fn iter_entities_3<A1: AccessMode, A2: AccessMode, A3: AccessMode>(&self) -> EntIt<(A1, A2, A3)> {
+        let type_ids = vec![
+            A1::component_type_id(), 
+            A2::component_type_id(),
+            A3::component_type_id()
+        ];
+        let entities = self.entities_with_components(&type_ids);
+        EntIt::<(A1, A2, A3)>::new_3(self as *const World, entities)
     }
     
     /// Create iterator for entities with 4 components  
@@ -440,9 +554,12 @@ impl World {
         EntIt::<(A1, A2, A3, A4)>::new_4(self as *const World, entities)
     }
     
-    /// Get all entities in the world (for compatibility with legacy code)
-    pub fn get_all_entities(&self) -> &Vec<Entity> {
-        &self.entities
+    /// Run a system on the world using ECS iterators
+    pub fn run_system<S: System>(&self, _system: &mut S) {
+        // This is a generic implementation that will need to be extended
+        // for specific iterator types. For now, it's a placeholder that
+        // demonstrates the system execution pattern.
+        println!("Running system: {}", std::any::type_name::<S>());
     }
 }
 

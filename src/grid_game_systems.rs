@@ -153,103 +153,71 @@ impl GridGameWorld {
         Ok(())
     }
     
-    /// Get the current player position
+    /// Get the current player position using ECS iterators
     pub fn get_player_position(&self) -> Option<(i32, i32)> {
-        // Find the player entity and get its position
-        for entity in self.world.get_all_entities() {
-            if self.world.has_component::<PlayerComponent>(*entity) {
-                if let Some(pos) = self.world.get_component::<GridPositionComponent>(*entity) {
-                    return Some((pos.x, pos.y));
-                }
-            }
+        // Use ECS iterator to find player with position component
+        let mut iter = self.world.iter_entities::<PlayerComponent, GridPositionComponent>();
+        if let Some((_, pos_ref)) = iter.next() {
+            let pos = pos_ref.get();
+            Some((pos.x, pos.y))
+        } else {
+            None
         }
-        None
     }
     
-    /// Move the player in a direction (if possible)
+    /// Move the player in a direction (if possible) using ECS iterators
     pub fn move_player(&mut self, dx: i32, dy: i32) -> bool {
-        // Find the player entity
-        let mut player_entity = None;
-        for entity in self.world.get_all_entities() {
-            if self.world.has_component::<PlayerComponent>(*entity) {
-                player_entity = Some(*entity);
-                break;
-            }
-        }
-        
-        let player_entity = match player_entity {
-            Some(e) => e,
-            None => return false,
-        };
-        
-        // Get current position
-        let current_pos = {
-            match self.world.get_component::<GridPositionComponent>(player_entity) {
-                Some(pos) => (pos.x, pos.y),
-                None => return false,
-            }
-        };
-        
-        let new_x = current_pos.0 + dx;
-        let new_y = current_pos.1 + dy;
-        
-        // Check bounds (simple 10x8 grid for now)
-        if new_x < 0 || new_x >= 10 || new_y < 0 || new_y >= 8 {
-            return false;
-        }
-        
-        // Check for obstacles at the new position
-        for entity in self.world.get_all_entities() {
-            if self.world.has_component::<ObstacleComponent>(*entity) {
-                if let Some(pos) = self.world.get_component::<GridPositionComponent>(*entity) {
-                    if pos.x == new_x && pos.y == new_y {
+        // Use ECS iterator to find player with position component
+        let mut iter = self.world.iter_entities::<PlayerComponent, Mut<GridPositionComponent>>();
+        if let Some((_, mut pos_ref)) = iter.next() {
+            if let Some(pos) = pos_ref.get_mut() {
+                let new_x = pos.x + dx;
+                let new_y = pos.y + dy;
+                
+                // Check bounds (simple 10x8 grid for now)
+                if new_x < 0 || new_x >= 10 || new_y < 0 || new_y >= 8 {
+                    return false;
+                }
+                
+                // Check for obstacles at the new position using ECS iterators
+                let obstacle_iter = self.world.iter_entities::<ObstacleComponent, GridPositionComponent>();
+                for (_, obstacle_pos_ref) in obstacle_iter {
+                    let obstacle_pos = obstacle_pos_ref.get();
+                    if obstacle_pos.x == new_x && obstacle_pos.y == new_y {
                         println!("Movement blocked by obstacle at ({}, {})", new_x, new_y);
                         return false;
                     }
                 }
+                
+                // Move the player
+                pos.x = new_x;
+                pos.y = new_y;
+                println!("Player moved to ({}, {})", new_x, new_y);
+                return true;
             }
         }
-        
-        // Move the player
-        if let Some(mut pos) = self.world.get_component_mut::<GridPositionComponent>(player_entity) {
-            pos.x = new_x;
-            pos.y = new_y;
-            println!("Player moved to ({}, {})", new_x, new_y);
-            return true;
-        }
-        
         false
     }
     
-    /// Get the game state as a string representation
+    /// Get the game state as a string representation using ECS iterators
     pub fn get_game_state(&self) -> String {
         let mut grid = vec![vec!['.'; 10]; 8];
         
-        // Place obstacles
-        for entity in self.world.get_all_entities() {
-            if self.world.has_component::<ObstacleComponent>(*entity) {
-                if let (Some(pos), Some(render)) = (
-                    self.world.get_component::<GridPositionComponent>(*entity),
-                    self.world.get_component::<RenderComponent>(*entity)
-                ) {
-                    if pos.x >= 0 && pos.x < 10 && pos.y >= 0 && pos.y < 8 {
-                        grid[pos.y as usize][pos.x as usize] = render.symbol;
-                    }
-                }
+        // Place obstacles using ECS iterators
+        let obstacle_iter = self.world.iter_entities::<ObstacleComponent, GridPositionComponent>();
+        for (_, pos_ref) in obstacle_iter {
+            let pos = pos_ref.get();
+            if pos.x >= 0 && pos.x < 10 && pos.y >= 0 && pos.y < 8 {
+                grid[pos.y as usize][pos.x as usize] = '#'; // Use default obstacle symbol
             }
         }
         
-        // Place player
-        for entity in self.world.get_all_entities() {
-            if self.world.has_component::<PlayerComponent>(*entity) {
-                if let (Some(pos), Some(render)) = (
-                    self.world.get_component::<GridPositionComponent>(*entity),
-                    self.world.get_component::<RenderComponent>(*entity)
-                ) {
-                    if pos.x >= 0 && pos.x < 10 && pos.y >= 0 && pos.y < 8 {
-                        grid[pos.y as usize][pos.x as usize] = render.symbol;
-                    }
-                }
+        // Place player using ECS iterators
+        let player_iter = self.world.iter_entities::<PlayerComponent, GridPositionComponent>();
+        for (_, pos_ref) in player_iter {
+            let pos = pos_ref.get();
+            if pos.x >= 0 && pos.x < 10 && pos.y >= 0 && pos.y < 8 {
+                grid[pos.y as usize][pos.x as usize] = 'P'; // Use default player symbol
             }
         }
         
