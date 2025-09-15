@@ -1,18 +1,155 @@
-use crate::rendering::*;
+use tiny_http::{Server, Request, Response, Header};
+use std::path::Path;
+use std::fs;
+use std::error::Error;
 use std::thread;
 use std::time::Duration;
+use crate::rendering::*;
 
-/// Enhanced HTTP server that includes rendering capabilities
-pub fn start_rendering_server(address: &str) -> Result<(), Box<dyn std::error::Error>> {
-    println!("🎮 Starting Rust City Builder with Rendering Server");
+/// Enhanced HTTP server that can serve static files from the web directory
+pub struct EnhancedHttpServer {
+    address: String,
+    web_root: String,
+}
+
+impl EnhancedHttpServer {
+    /// Create a new enhanced HTTP server
+    pub fn new(address: &str, web_root: &str) -> Self {
+        Self {
+            address: address.to_string(),
+            web_root: web_root.to_string(),
+        }
+    }
     
-    // Create a web service just for serving the page (separate from global rendering)
-    let web_service_for_page = WebServiceManager::new(address);
-    let page_content = web_service_for_page.create_client_page();
+    /// Start the HTTP server and handle requests
+    pub fn start(&self) -> Result<(), Box<dyn Error>> {
+        let server = Server::http(&self.address)
+            .map_err(|e| format!("Failed to start server: {}", e))?;
+        
+        println!("🌐 Enhanced HTTP server started on http://{}", self.address);
+        println!("📁 Serving files from: {}", self.web_root);
+        println!("📡 Open http://{} in your browser to see the JavaScript rendering library client", self.address);
+        println!("");
+        
+        for request in server.incoming_requests() {
+            self.handle_request(request);
+        }
+        
+        Ok(())
+    }
     
-    println!("✅ Using existing global rendering manager");
+    /// Handle an individual HTTP request
+    fn handle_request(&self, request: Request) {
+        let url = request.url();
+        println!("Request: {} {}", request.method(), url);
+        
+        // Determine the file path
+        let file_path = if url == "/" {
+            format!("{}/index.html", self.web_root)
+        } else {
+            format!("{}{}", self.web_root, url)
+        };
+        
+        // Serve the file
+        match self.serve_file(&file_path) {
+            Ok(response) => {
+                if let Err(e) = request.respond(response) {
+                    eprintln!("Failed to send response: {}", e);
+                }
+            }
+            Err(e) => {
+                eprintln!("Failed to serve file {}: {}", file_path, e);
+                let response = self.create_error_response(404, "File not found", &file_path);
+                if let Err(e) = request.respond(response) {
+                    eprintln!("Failed to send error response: {}", e);
+                }
+            }
+        }
+    }
     
-    // Wait a moment for initialization
+    /// Serve a file from the filesystem
+    fn serve_file(&self, file_path: &str) -> Result<Response<std::fs::File>, Box<dyn Error>> {
+        // Check if file exists
+        if !Path::new(file_path).exists() {
+            return Err(format!("File not found: {}", file_path).into());
+        }
+        
+        let file = fs::File::open(file_path)
+            .map_err(|e| format!("Cannot open file: {}", e))?;
+        
+        let content_type = self.get_content_type(file_path);
+        let header = Header::from_bytes(&b"Content-Type"[..], content_type.as_bytes())
+            .map_err(|_| "Cannot create header")?;
+        
+        Ok(Response::from_file(file).with_header(header))
+    }
+    
+    /// Get the content type for a file based on its extension
+    fn get_content_type(&self, file_path: &str) -> String {
+        let path = Path::new(file_path);
+        match path.extension().and_then(|ext| ext.to_str()) {
+            Some("html") => "text/html; charset=utf-8".to_string(),
+            Some("js") => "application/javascript; charset=utf-8".to_string(),
+            Some("css") => "text/css; charset=utf-8".to_string(),
+            Some("json") => "application/json; charset=utf-8".to_string(),
+            Some("png") => "image/png".to_string(),
+            Some("jpg") | Some("jpeg") => "image/jpeg".to_string(),
+            Some("gif") => "image/gif".to_string(),
+            Some("svg") => "image/svg+xml".to_string(),
+            Some("ico") => "image/x-icon".to_string(),
+            _ => "text/plain; charset=utf-8".to_string(),
+        }
+    }
+    
+    /// Create an error response with fallback content
+    fn create_error_response(&self, status_code: u16, message: &str, requested_path: &str) -> Response<std::io::Cursor<Vec<u8>>> {
+        let web_service = WebServiceManager::new(&self.address);
+        let fallback_content = if requested_path.ends_with("/index.html") || requested_path.ends_with("/") {
+            // If the main page is missing, show fallback page
+            web_service.create_fallback_client_page()
+        } else {
+            // For other files, show a simple error page
+            format!(
+                r#"<!DOCTYPE html>
+<html>
+<head>
+    <title>Error {}</title>
+    <style>
+        body {{ font-family: Arial, sans-serif; text-align: center; padding: 50px; }}
+        .error {{ color: #d73527; }}
+        .container {{ max-width: 600px; margin: 0 auto; }}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1 class="error">Error {}</h1>
+        <p>{}</p>
+        <p><strong>Requested:</strong> <code>{}</code></p>
+        <hr>
+        <p><em>Rust City Builder - Enhanced HTTP Server</em></p>
+        <p><a href="/">← Return to Home</a></p>
+    </div>
+</body>
+</html>"#,
+                status_code, status_code, message, requested_path
+            )
+        };
+        
+        let fallback_bytes = fallback_content.into_bytes();
+        let header = Header::from_bytes(&b"Content-Type"[..], &b"text/html; charset=utf-8"[..])
+            .unwrap_or_else(|_| Header::from_bytes(&b"Content-Type"[..], &b"text/plain"[..]).unwrap());
+        
+        Response::from_data(fallback_bytes)
+            .with_header(header)
+            .with_status_code(status_code)
+    }
+}
+
+/// Start the enhanced HTTP server that serves the JavaScript library files
+pub fn start_rendering_server(address: &str) -> Result<(), Box<dyn Error>> {
+    println!("🎮 Starting Rust City Builder with JavaScript Library Server");
+    
+    // Wait a moment for global rendering manager to be ready
     thread::sleep(Duration::from_millis(100));
     
     // Send initial grid render command using global manager
@@ -23,43 +160,8 @@ pub fn start_rendering_server(address: &str) -> Result<(), Box<dyn std::error::E
         }
     }
     
-    // Start basic HTTP server to serve the client page
-    use tiny_http::{Server, Response, Header};
-    
-    let server = Server::http(address)
-        .map_err(|e| format!("Failed to start HTTP server: {}", e))?;
-    
-    println!("🌐 HTTP server started on http://{}", address);
-    println!("📡 Open http://{} in your browser to see the web rendering client", address);
-    println!("🎯 The client will automatically render a black and white grid");
-    println!("");
-    println!("Press Ctrl+C to stop the server");
-    
-    for request in server.incoming_requests() {
-        let method = request.method();
-        let url = request.url();
-        
-        println!("{} {}", method, url);
-        
-        // Serve the rendering client page for all requests
-        let header = Header::from_bytes(&b"Content-Type"[..], &b"text/html; charset=utf-8"[..])
-            .expect("Invalid header");
-        
-        let response = Response::from_string(&page_content)
-            .with_header(header);
-        
-        if let Err(e) = request.respond(response) {
-            eprintln!("Error responding to request: {}", e);
-        }
-        
-        // Send another grid render command for each request to demonstrate
-        thread::spawn(|| {
-            thread::sleep(Duration::from_millis(1000));
-            let _ = render_global_grid(8, 6, 50.0);
-        });
-    }
-    
-    Ok(())
+    let server = EnhancedHttpServer::new(address, "web");
+    server.start()
 }
 
 /// Demonstrate the rendering system with a web client

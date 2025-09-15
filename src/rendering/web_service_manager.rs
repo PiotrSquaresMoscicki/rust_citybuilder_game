@@ -191,187 +191,73 @@ impl WebServiceManager {
         Ok(())
     }
     
-    /// Create the HTML page content for the web client
-    pub fn create_client_page(&self) -> String {
+    /// Get the path to the web client files
+    pub fn get_web_files_path(&self) -> String {
+        "web".to_string()
+    }
+    
+    /// Create the HTML page content for the web client (fallback for when files are not available)
+    pub fn create_fallback_client_page(&self) -> String {
         r#"<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Rust City Builder - Web Client</title>
+    <title>Rust City Builder - Fallback Client</title>
     <style>
         body {
             font-family: Arial, sans-serif;
             margin: 0;
             padding: 20px;
             background-color: #f5f5f5;
+            text-align: center;
         }
         .container {
-            max-width: 1200px;
+            max-width: 600px;
             margin: 0 auto;
             background: white;
-            padding: 20px;
+            padding: 40px;
             border-radius: 8px;
             box-shadow: 0 2px 10px rgba(0,0,0,0.1);
         }
-        h1 {
-            color: #333;
-            text-align: center;
-        }
-        #renderCanvas {
-            border: 2px solid #ccc;
-            background: white;
-            display: block;
-            margin: 20px auto;
-        }
-        .status {
-            text-align: center;
-            margin: 10px 0;
-            padding: 10px;
-            border-radius: 4px;
-        }
-        .connected {
-            background-color: #d4edda;
-            color: #155724;
-            border: 1px solid #c3e6cb;
-        }
-        .disconnected {
-            background-color: #f8d7da;
-            color: #721c24;
+        .error {
+            color: #d73527;
+            background: #f8d7da;
             border: 1px solid #f5c6cb;
+            padding: 15px;
+            border-radius: 4px;
+            margin: 20px 0;
         }
-        .log {
-            height: 200px;
-            overflow-y: auto;
-            border: 1px solid #ccc;
-            padding: 10px;
-            background: #f8f9fa;
-            font-family: monospace;
-            font-size: 12px;
+        .info {
+            color: #0c5460;
+            background: #d1ecf1;
+            border: 1px solid #bee5eb;
+            padding: 15px;
+            border-radius: 4px;
+            margin: 20px 0;
         }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>🎮 Rust City Builder - Web Rendering Client</h1>
+        <h1>🎮 Rust City Builder - Web Client</h1>
         
-        <div id="status" class="status disconnected">
-            Disconnected
+        <div class="error">
+            <h3>JavaScript Library Files Not Found</h3>
+            <p>The JavaScript rendering manager library files could not be loaded.</p>
         </div>
         
-        <canvas id="renderCanvas" width="800" height="600"></canvas>
-        
-        <h3>Command Log:</h3>
-        <div id="log" class="log"></div>
+        <div class="info">
+            <h4>Expected Files:</h4>
+            <ul style="text-align: left;">
+                <li><code>web/index.html</code> - Main client page</li>
+                <li><code>web/js/rendering-manager.js</code> - Rendering library</li>
+                <li><code>web/js/web-client.js</code> - Client communication library</li>
+            </ul>
+            
+            <p><strong>Note:</strong> This is a fallback page. Please ensure the JavaScript library files are properly installed in the <code>web/</code> directory.</p>
+        </div>
     </div>
-
-    <script>
-        class WebRenderingClient {
-            constructor() {
-                this.canvas = document.getElementById('renderCanvas');
-                this.ctx = this.canvas.getContext('2d');
-                this.status = document.getElementById('status');
-                this.log = document.getElementById('log');
-                this.connected = false;
-                this.clientId = null;
-                
-                this.updateStatus();
-                this.logMessage('Client initialized');
-                
-                // Simulate connection after a short delay
-                setTimeout(() => this.connect(), 1000);
-            }
-            
-            connect() {
-                this.connected = true;
-                this.clientId = 'client_' + Math.random().toString(36).substr(2, 9);
-                this.updateStatus();
-                this.logMessage('Connected to server as ' + this.clientId);
-                
-                // Send initial render command simulation
-                setTimeout(() => {
-                    this.receiveRenderCommand('DrawGrid', {
-                        width: 10,
-                        height: 8,
-                        cellSize: 40,
-                        lineColor: [0, 0, 0, 1],
-                        backgroundColor: [1, 1, 1, 1]
-                    });
-                }, 2000);
-            }
-            
-            updateStatus() {
-                if (this.connected) {
-                    this.status.className = 'status connected';
-                    this.status.textContent = 'Connected (' + (this.clientId || 'unknown') + ')';
-                } else {
-                    this.status.className = 'status disconnected';
-                    this.status.textContent = 'Disconnected';
-                }
-            }
-            
-            logMessage(message) {
-                const timestamp = new Date().toLocaleTimeString();
-                const logEntry = `[${timestamp}] ${message}\n`;
-                this.log.textContent += logEntry;
-                this.log.scrollTop = this.log.scrollHeight;
-            }
-            
-            receiveRenderCommand(command, params) {
-                this.logMessage(`Received render command: ${command}`);
-                this.logMessage(`Parameters: ${JSON.stringify(params)}`);
-                
-                switch (command) {
-                    case 'DrawGrid':
-                        this.drawGrid(params);
-                        break;
-                    default:
-                        this.logMessage(`Unknown command: ${command}`);
-                }
-            }
-            
-            drawGrid(params) {
-                const { width, height, cellSize, lineColor, backgroundColor } = params;
-                
-                // Clear canvas
-                this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
-                
-                // Set background
-                this.ctx.fillStyle = `rgba(${backgroundColor[0] * 255}, ${backgroundColor[1] * 255}, ${backgroundColor[2] * 255}, ${backgroundColor[3]})`;
-                this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
-                
-                // Set line style
-                this.ctx.strokeStyle = `rgba(${lineColor[0] * 255}, ${lineColor[1] * 255}, ${lineColor[2] * 255}, ${lineColor[3]})`;
-                this.ctx.lineWidth = 1;
-                
-                // Draw grid
-                this.ctx.beginPath();
-                
-                // Vertical lines
-                for (let x = 0; x <= width; x++) {
-                    const xPos = x * cellSize;
-                    this.ctx.moveTo(xPos, 0);
-                    this.ctx.lineTo(xPos, height * cellSize);
-                }
-                
-                // Horizontal lines
-                for (let y = 0; y <= height; y++) {
-                    const yPos = y * cellSize;
-                    this.ctx.moveTo(0, yPos);
-                    this.ctx.lineTo(width * cellSize, yPos);
-                }
-                
-                this.ctx.stroke();
-                
-                this.logMessage(`Grid drawn: ${width}x${height} cells, ${cellSize}px each`);
-            }
-        }
-        
-        // Initialize the client when the page loads
-        window.addEventListener('load', () => {
-            new WebRenderingClient();
-        });
-    </script>
 </body>
 </html>"#.to_string()
     }
