@@ -6,9 +6,6 @@ pub mod hierarchy;
 pub mod input_action;
 pub mod input_system;
 
-#[cfg(test)]
-pub mod input_system_demo;
-
 // Re-exports are commented out as they're currently unused
 // Individual modules can be imported directly when needed
 // pub use math::*;

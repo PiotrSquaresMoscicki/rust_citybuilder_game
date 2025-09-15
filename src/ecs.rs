@@ -104,6 +104,7 @@ impl ComponentPool {
 }
 
 /// System trait with Dependencies and Iterators associated types as specified
+/// Iterators should be a tuple of iterators for different component queries
 #[allow(dead_code)] // Framework trait for system architecture
 pub trait System {
     type Dependencies;
@@ -406,6 +407,21 @@ pub struct World {
     component_pools: HashMap<TypeId, ComponentPool>,
 }
 
+/// Tuple iterator types for systems that need multiple separate component queries
+/// These allow systems to iterate over different sets of components independently
+
+/// Tuple of 1 iterator
+pub type TupleIter1<I1> = (I1,);
+
+/// Tuple of 2 iterators  
+pub type TupleIter2<I1, I2> = (I1, I2);
+
+/// Tuple of 3 iterators
+pub type TupleIter3<I1, I2, I3> = (I1, I2, I3);
+
+/// Tuple of 4 iterators
+pub type TupleIter4<I1, I2, I3, I4> = (I1, I2, I3, I4);
+
 #[allow(dead_code)] // Core ECS World implementation, used across modules
 impl World {
     /// Create a new empty world
@@ -554,6 +570,57 @@ impl World {
         EntIt::<(A1, A2, A3, A4)>::new_4(self as *const World, entities)
     }
     
+    /// Create tuple iterator with 1 iterator (single component)
+    pub fn tuple_iter_1<A1: AccessMode>(&self) -> TupleIter1<EntIt<A1>> {
+        let iter1 = self.iter_entities_1::<A1>();
+        (iter1,)
+    }
+    
+    /// Create tuple iterator with 1 iterator (two components)
+    pub fn tuple_iter_1_pair<A1: AccessMode, A2: AccessMode>(&self) -> TupleIter1<EntIt<(A1, A2)>> {
+        let iter1 = self.iter_entities::<A1, A2>();
+        (iter1,)
+    }
+    
+    /// Create tuple iterator with 2 iterators (mixed single and pair components)
+    pub fn tuple_iter_2_mixed<A1: AccessMode, B1: AccessMode, B2: AccessMode>(
+        &self
+    ) -> TupleIter2<EntIt<A1>, EntIt<(B1, B2)>> {
+        let iter1 = self.iter_entities_1::<A1>();
+        let iter2 = self.iter_entities::<B1, B2>();
+        (iter1, iter2)
+    }
+    
+    /// Create tuple iterator with 3 iterators
+    pub fn tuple_iter_3<
+        A1: AccessMode, A2: AccessMode,
+        B1: AccessMode, B2: AccessMode, 
+        C1: AccessMode, C2: AccessMode
+    >(
+        &self
+    ) -> TupleIter3<EntIt<(A1, A2)>, EntIt<(B1, B2)>, EntIt<(C1, C2)>> {
+        let iter1 = self.iter_entities::<A1, A2>();
+        let iter2 = self.iter_entities::<B1, B2>();
+        let iter3 = self.iter_entities::<C1, C2>();
+        (iter1, iter2, iter3)
+    }
+    
+    /// Create tuple iterator with 4 iterators
+    pub fn tuple_iter_4<
+        A1: AccessMode, A2: AccessMode,
+        B1: AccessMode, B2: AccessMode,
+        C1: AccessMode, C2: AccessMode,
+        D1: AccessMode, D2: AccessMode
+    >(
+        &self
+    ) -> TupleIter4<EntIt<(A1, A2)>, EntIt<(B1, B2)>, EntIt<(C1, C2)>, EntIt<(D1, D2)>> {
+        let iter1 = self.iter_entities::<A1, A2>();
+        let iter2 = self.iter_entities::<B1, B2>();
+        let iter3 = self.iter_entities::<C1, C2>();
+        let iter4 = self.iter_entities::<D1, D2>();
+        (iter1, iter2, iter3, iter4)
+    }
+
     /// Run a system on the world using ECS iterators
     pub fn run_system<S: System>(&self, _system: &mut S) {
         // This is a generic implementation that will need to be extended
@@ -608,6 +675,46 @@ mod tests {
         }
     }
 
+    // New components for gravity/force example
+    #[derive(Clone, Debug)]
+    struct GravityComponent {
+        pub strength: f32,
+    }
+
+    impl Component for GravityComponent {
+        fn as_any(&self) -> &dyn Any {
+            self
+        }
+
+        fn as_any_mut(&mut self) -> &mut dyn Any {
+            self
+        }
+
+        fn clone_box(&self) -> Box<dyn Component> {
+            Box::new(self.clone())
+        }
+    }
+
+    #[derive(Clone, Debug)]
+    struct ForceComponent {
+        pub fx: f32,
+        pub fy: f32,
+    }
+
+    impl Component for ForceComponent {
+        fn as_any(&self) -> &dyn Any {
+            self
+        }
+
+        fn as_any_mut(&mut self) -> &mut dyn Any {
+            self
+        }
+
+        fn clone_box(&self) -> Box<dyn Component> {
+            Box::new(self.clone())
+        }
+    }
+
     // System markers for testing
     struct TimeSystem;
     impl SystemMarker for TimeSystem {
@@ -624,17 +731,49 @@ mod tests {
         fn name() -> &'static str { "PhysicsSystem" }
     }
 
-    // Example system matching the target design
+    // Example system matching the target design - updated for tuple iterators
     struct SampleSystem;
 
     impl System for SampleSystem {
         type Dependencies = (TimeSystem, InputSystem, PhysicsSystem);
-        type Iterators = EntIt<(Mut<PositionComponent>, VelocityComponent)>;
+        type Iterators = TupleIter1<EntIt<(Mut<PositionComponent>, VelocityComponent)>>;
 
         fn update(&mut self, iterators: Self::Iterators) {
+            let (pos_vel_iter,) = iterators;
             // Implementation of the update logic
-            for (_position, _velocity) in iterators {
+            for (_position, _velocity) in pos_vel_iter {
                 // Can access components directly as tuples
+            }
+        }
+    }
+
+    // Example gravity/force system as mentioned in the comment
+    struct GravityForceSystem;
+
+    impl System for GravityForceSystem {
+        type Dependencies = ();
+        type Iterators = TupleIter2<
+            EntIt<GravityComponent>,
+            EntIt<(PositionComponent, Mut<ForceComponent>)>
+        >;
+
+        fn update(&mut self, iterators: Self::Iterators) {
+            let (gravity_iter, force_iter) = iterators;
+            
+            // Iterate over gravity components (some entities)
+            for gravity_ref in gravity_iter {
+                let gravity = gravity_ref.get();
+                println!("Processing gravity with strength: {}", gravity.strength);
+            }
+            
+            // Iterate over force components (different entities)  
+            for (pos_ref, mut force_ref) in force_iter {
+                let pos = pos_ref.get();
+                if let Some(force) = force_ref.get_mut() {
+                    // Update force based on position and gravity
+                    force.fy += 9.8; // Apply gravity
+                    println!("Updated force at ({}, {}): fx={}, fy={}", pos.x, pos.y, force.fx, force.fy);
+                }
             }
         }
     }
@@ -648,11 +787,42 @@ mod tests {
         world.add_component(entity, PositionComponent { x: 0.0, y: 0.0 });
         world.add_component(entity, VelocityComponent { dx: 1.0, dy: 2.0 });
         
-        // Test the new iterator API
-        let iter = world.iter_entities::<Mut<PositionComponent>, VelocityComponent>();
+        // Test the new tuple iterator API
+        let tuple_iter = world.tuple_iter_1_pair::<Mut<PositionComponent>, VelocityComponent>();
         
         // Create and use the system
         let mut sample_system = SampleSystem;
-        sample_system.update(iter);
+        sample_system.update(tuple_iter);
+    }
+
+    #[test]
+    fn test_gravity_force_tuple_iterators() {
+        let mut world = World::new();
+        
+        // Create entities with gravity components
+        let gravity_entity1 = world.create_entity();
+        world.add_component(gravity_entity1, GravityComponent { strength: 9.8 });
+        
+        let gravity_entity2 = world.create_entity();
+        world.add_component(gravity_entity2, GravityComponent { strength: 12.0 });
+        
+        // Create entities with position and force components (different entities)
+        let physics_entity1 = world.create_entity();
+        world.add_component(physics_entity1, PositionComponent { x: 1.0, y: 2.0 });
+        world.add_component(physics_entity1, ForceComponent { fx: 0.0, fy: 0.0 });
+        
+        let physics_entity2 = world.create_entity();
+        world.add_component(physics_entity2, PositionComponent { x: 3.0, y: 4.0 });
+        world.add_component(physics_entity2, ForceComponent { fx: 1.0, fy: -2.0 });
+        
+        // Test the tuple iterator API with multiple different iterators
+        let tuple_iter = world.tuple_iter_2_mixed::<
+            GravityComponent, // Single component iterator
+            PositionComponent, Mut<ForceComponent> // Two component iterator
+        >();
+        
+        // Create and use the gravity/force system
+        let mut gravity_force_system = GravityForceSystem;
+        gravity_force_system.update(tuple_iter);
     }
 }
