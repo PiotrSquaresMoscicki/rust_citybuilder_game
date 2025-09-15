@@ -777,6 +777,209 @@
                     loadingScreen.style.display = 'none';
                 }, 500);
             }
+            
+            /**
+             * Setup ECS Game Integration
+             * This method is called when the template is configured for ECS games
+             */
+            setupECSGameIntegration() {
+                console.log('🎮 Setting up ECS Game Integration...');
+                
+                if (!window.ECS_GAME_CONFIG) {
+                    console.warn('No ECS_GAME_CONFIG found, using defaults');
+                    return;
+                }
+                
+                const config = window.ECS_GAME_CONFIG;
+                console.log('🔧 ECS Game Config:', config);
+                
+                // Setup ECS-specific input handling
+                if (this.inputManager) {
+                    this.inputManager.onInput('keydown', (event) => {
+                        this.handleECSGameInput(event.key);
+                    });
+                    
+                    // Also handle mouse clicks for movement
+                    this.inputManager.onInput('mousedown', (event) => {
+                        this.handleECSGameMouseClick(event);
+                    });
+                }
+                
+                // Setup ECS game state polling
+                if (config.enablePolling) {
+                    this.startECSGamePolling(config.pollInterval || 100);
+                }
+                
+                // Initialize with initial state if provided
+                if (config.initialState) {
+                    this.updateECSGameState(config.initialState);
+                }
+                
+                // Replace the status message
+                this.setStatusMessage('ECS Grid Game loaded! Use WASD to move.');
+                
+                console.log('✅ ECS Game Integration setup complete');
+            }
+            
+            /**
+             * Handle ECS game input
+             */
+            handleECSGameInput(key) {
+                let direction = null;
+                
+                switch(key.toLowerCase()) {
+                    case 'w':
+                    case 'arrowup':
+                        direction = 'up';
+                        break;
+                    case 's':
+                    case 'arrowdown':
+                        direction = 'down';
+                        break;
+                    case 'a':
+                    case 'arrowleft':
+                        direction = 'left';
+                        break;
+                    case 'd':
+                    case 'arrowright':
+                        direction = 'right';
+                        break;
+                }
+                
+                if (direction) {
+                    this.sendECSGameMove(direction);
+                }
+            }
+            
+            /**
+             * Handle ECS game mouse clicks for movement
+             */
+            handleECSGameMouseClick(event) {
+                // Calculate grid position from mouse click
+                // This would need to be configured based on your grid size
+                console.log('Mouse click at:', event.position);
+                // For now, just log - could implement click-to-move later
+            }
+            
+            /**
+             * Send movement command to ECS game server
+             */
+            async sendECSGameMove(direction) {
+                try {
+                    const config = window.ECS_GAME_CONFIG;
+                    const response = await fetch(`${config.apiUrl}/move`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({ direction: direction })
+                    });
+                    
+                    const data = await response.json();
+                    
+                    if (data.success) {
+                        this.updateECSGameState(data);
+                        this.setStatusMessage(`Moved ${direction} to (${data.playerPosition.x}, ${data.playerPosition.y})`);
+                    } else {
+                        this.setStatusMessage(`Cannot move ${direction} - blocked`);
+                    }
+                } catch (error) {
+                    console.error('Error sending move command:', error);
+                    this.setStatusMessage('Error communicating with server');
+                }
+            }
+            
+            /**
+             * Start polling ECS game state
+             */
+            startECSGamePolling(interval) {
+                setInterval(async () => {
+                    try {
+                        const config = window.ECS_GAME_CONFIG;
+                        const response = await fetch(`${config.apiUrl}/state`);
+                        const data = await response.json();
+                        
+                        this.updateECSGameState(data);
+                        
+                        if (data.moved) {
+                            this.setStatusMessage(`Input detected: ${data.lastInput}`);
+                        }
+                    } catch (error) {
+                        // Silent fail for polling - don't spam console
+                    }
+                }, interval);
+            }
+            
+            /**
+             * Update the game display with ECS game state
+             */
+            updateECSGameState(data) {
+                if (data.gameState) {
+                    // Render the game state to the canvas
+                    this.renderECSGameState(data.gameState);
+                }
+                
+                if (data.playerPosition) {
+                    this.playerPosition = data.playerPosition;
+                    this.updatePlayerPosition();
+                }
+            }
+            
+            /**
+             * Render ECS game state to canvas
+             */
+            renderECSGameState(gameState) {
+                const ctx = this.canvas.getContext('2d');
+                
+                // Clear canvas
+                ctx.fillStyle = '#001122';
+                ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+                
+                // Draw the grid game state
+                const lines = gameState.split('\\n');
+                const cellSize = 40;
+                const startX = (this.canvas.width - (lines[0].length * cellSize)) / 2;
+                const startY = (this.canvas.height - (lines.length * cellSize)) / 2;
+                
+                ctx.font = '32px monospace';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                
+                for (let y = 0; y < lines.length; y++) {
+                    const line = lines[y];
+                    for (let x = 0; x < line.length; x++) {
+                        const char = line[x];
+                        const posX = startX + x * cellSize + cellSize / 2;
+                        const posY = startY + y * cellSize + cellSize / 2;
+                        
+                        // Draw background
+                        ctx.fillStyle = '#111';
+                        ctx.fillRect(startX + x * cellSize, startY + y * cellSize, cellSize, cellSize);
+                        
+                        // Draw border
+                        ctx.strokeStyle = '#333';
+                        ctx.lineWidth = 1;
+                        ctx.strokeRect(startX + x * cellSize, startY + y * cellSize, cellSize, cellSize);
+                        
+                        // Draw character
+                        switch (char) {
+                            case '@':
+                                ctx.fillStyle = '#ff0040';
+                                break;
+                            case '#':
+                                ctx.fillStyle = '#8b4513';
+                                break;
+                            case '.':
+                                ctx.fillStyle = '#333';
+                                break;
+                            default:
+                                ctx.fillStyle = '#fff';
+                        }
+                        
+                        ctx.fillText(char, posX, posY);
+                    }
+                }
+            }
         }
         
         // Initialize the game template when the page loads

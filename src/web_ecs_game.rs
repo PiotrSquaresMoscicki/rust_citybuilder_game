@@ -4,6 +4,8 @@ use crate::rendering::{render_global_grid};
 use crate::input::{poll_global_input_events, is_global_key_pressed, Key};
 use tiny_http::{Server, Response, Header, Request, Method};
 use serde_json;
+use std::fs;
+use std::io::Read;
 
 /// Web-based ECS game demo
 pub struct WebEcsGameDemo {
@@ -95,24 +97,38 @@ impl WebEcsGameDemo {
     }
     
     /// Handle HTTP requests
-    fn handle_request(&mut self, mut request: Request) -> Result<(), Box<dyn std::error::Error>> {
-        let method = request.method();
-        let url = request.url();
+    fn handle_request(&mut self, request: Request) -> Result<(), Box<dyn std::error::Error>> {
+        let method = request.method().clone();
+        let url = request.url().to_string();
         
         println!("{} {}", method, url);
         
-        match (method, url) {
-            (&Method::Get, "/") => {
-                let html = self.create_game_page();
-                let header = Header::from_bytes(&b"Content-Type"[..], &b"text/html; charset=utf-8"[..])
-                    .map_err(|_| "Failed to create header")?;
-                let response = Response::from_string(html).with_header(header);
-                request.respond(response)?;
+        match (method, url.as_str()) {
+            (Method::Get, "/") => {
+                // Serve the generic HTML template from web/game-template.html
+                match self.serve_generic_template() {
+                    Ok(html) => {
+                        let header = Header::from_bytes(&b"Content-Type"[..], &b"text/html; charset=utf-8"[..])
+                            .map_err(|_| "Failed to create header")?;
+                        let response = Response::from_string(html).with_header(header);
+                        request.respond(response)?;
+                    }
+                    Err(e) => {
+                        eprintln!("Error serving template: {}", e);
+                        // Fallback to a simple error page
+                        let error_html = self.create_error_page(&format!("Error loading template: {}", e));
+                        let header = Header::from_bytes(&b"Content-Type"[..], &b"text/html; charset=utf-8"[..])
+                            .map_err(|_| "Failed to create header")?;
+                        let response = Response::from_string(error_html).with_header(header);
+                        request.respond(response)?;
+                    }
+                }
             }
-            (&Method::Post, "/move") => {
+            (Method::Post, "/move") => {
                 // Read the JSON body
                 let mut body = String::new();
-                request.as_reader().read_to_string(&mut body)?;
+                let mut request = request;
+                std::io::Read::read_to_string(request.as_reader(), &mut body)?;
                 
                 // Parse the movement command
                 if let Ok(move_data) = serde_json::from_str::<serde_json::Value>(&body) {
@@ -155,7 +171,7 @@ impl WebEcsGameDemo {
                     request.respond(response)?;
                 }
             }
-            (&Method::Get, "/state") => {
+            (Method::Get, "/state") => {
                 // Process input from global input manager
                 let (dx, dy) = self.process_input_from_global_manager();
                 
@@ -190,7 +206,7 @@ impl WebEcsGameDemo {
                 let response = Response::from_string(response_data.to_string()).with_header(header);
                 request.respond(response)?;
             }
-            (&Method::Get, "/input-info") => {
+            (Method::Get, "/input-info") => {
                 // Return information about the input manager
                 let response_data = serde_json::json!({
                     "inputDeviceId": self.input_device_id,
@@ -204,12 +220,96 @@ impl WebEcsGameDemo {
                 let response = Response::from_string(response_data.to_string()).with_header(header);
                 request.respond(response)?;
             }
+            (Method::Get, path) if path.starts_with("/js/") => {
+                // Serve JavaScript files from web/js/ directory
+                self.serve_static_file(path, "application/javascript", request)?;
+            }
+            (Method::Get, path) if path.starts_with("/css/") => {
+                // Serve CSS files from web/css/ directory  
+                self.serve_static_file(path, "text/css", request)?;
+            }
             _ => {
                 // Default to serving the game page
-                let html = self.create_game_page();
-                let header = Header::from_bytes(&b"Content-Type"[..], &b"text/html; charset=utf-8"[..])
+                match self.serve_generic_template() {
+                    Ok(html) => {
+                        let header = Header::from_bytes(&b"Content-Type"[..], &b"text/html; charset=utf-8"[..])
+                            .map_err(|_| "Failed to create header")?;
+                        let response = Response::from_string(html).with_header(header);
+                        request.respond(response)?;
+                    }
+                    Err(e) => {
+                        eprintln!("Error serving template: {}", e);
+                        let error_html = self.create_error_page(&format!("Error loading template: {}", e));
+                        let header = Header::from_bytes(&b"Content-Type"[..], &b"text/html; charset=utf-8"[..])
+                            .map_err(|_| "Failed to create header")?;
+                        let response = Response::from_string(error_html).with_header(header);
+                        request.respond(response)?;
+                    }
+                }
+            }
+        }
+        
+        Ok(())
+    }
+    
+    /// Serve the generic HTML template and configure it for the ECS game
+    fn serve_generic_template(&self) -> Result<String, String> {
+        // Read the generic template file
+        let template_path = "web/game-template.html";
+        let mut template_content = fs::read_to_string(template_path)
+            .map_err(|e| format!("Failed to read template file {}: {}", template_path, e))?;
+        
+        // Get current game state for initial configuration
+        let game_state = self.game_world.get_game_state();
+        let player_pos = self.game_world.get_player_position().unwrap_or((1, 1));
+        
+        // Configure the template for ECS game by adding custom script
+        let ecs_game_config = format!(r#"
+        <script>
+            // ECS Game Configuration
+            window.ECS_GAME_CONFIG = {{
+                apiUrl: window.location.origin,
+                gameType: 'ecs-grid-game',
+                initialState: {{'gameState': '{}', 'playerPosition': {{'x': {}, 'y': {}}}}},
+                enablePolling: true,
+                pollInterval: 100
+            }};
+            
+            // Override the default game template to work with ECS backend
+            window.addEventListener('load', () => {{
+                console.log('🎮 ECS Grid Game loaded with JavaScript libraries');
+                console.log('🔗 API URL:', window.ECS_GAME_CONFIG.apiUrl);
+                
+                // Initialize ECS-specific functionality
+                if (window.gameTemplate) {{
+                    window.gameTemplate.setupECSGameIntegration();
+                }}
+            }});
+        </script>"#, 
+        game_state.replace('\n', "\\n").replace('\r', ""),
+        player_pos.0, 
+        player_pos.1);
+        
+        // Insert the ECS configuration before the closing body tag
+        template_content = template_content.replace("</body>", &format!("{}\n</body>", ecs_game_config));
+        
+        Ok(template_content)
+    }
+    
+    /// Serve static files (JS, CSS, etc.) from the web directory
+    fn serve_static_file(&self, path: &str, content_type: &str, request: Request) -> Result<(), Box<dyn std::error::Error>> {
+        let file_path = format!("web{}", path);
+        
+        match fs::read_to_string(&file_path) {
+            Ok(content) => {
+                let header = Header::from_bytes(&b"Content-Type"[..], content_type.as_bytes())
                     .map_err(|_| "Failed to create header")?;
-                let response = Response::from_string(html).with_header(header);
+                let response = Response::from_string(content).with_header(header);
+                request.respond(response)?;
+            }
+            Err(_) => {
+                // File not found - return 404
+                let response = Response::from_string("404 Not Found").with_status_code(404);
                 request.respond(response)?;
             }
         }
@@ -217,378 +317,31 @@ impl WebEcsGameDemo {
         Ok(())
     }
     
-    /// Create the HTML page for the ECS grid game
-    fn create_game_page(&self) -> String {
-        let initial_state = self.game_world.get_game_state();
-        let player_pos = self.game_world.get_player_position().unwrap_or((1, 1));
-        
+    /// Create a simple error page when template loading fails
+    fn create_error_page(&self, error_message: &str) -> String {
         format!(r#"<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Framework Demo - Rendering & Input Modules</title>
+    <title>ECS Game - Error</title>
     <style>
-        body {{
-            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
-            margin: 0;
-            padding: 20px;
-            background: linear-gradient(135deg, #0c1445 0%, #1a1a2e 50%, #16213e 100%);
-            color: #00ff41;
-            min-height: 100vh;
-        }}
-        .container {{
-            max-width: 1000px;
-            margin: 0 auto;
-            background: #000;
-            padding: 30px;
-            border-radius: 12px;
-            border: 2px solid #00ff41;
-            box-shadow: 0 0 30px rgba(0, 255, 65, 0.3);
-        }}
-        h1 {{
-            color: #00ff41;
-            text-align: center;
-            text-shadow: 0 0 15px #00ff41;
-            margin-bottom: 10px;
-        }}
-        .subtitle {{
-            text-align: center;
-            color: #888;
-            margin-bottom: 30px;
-            font-size: 14px;
-        }}
-        .game-container {{
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-        }}
-        #gameGrid {{
-            background: #111;
-            border: 3px solid #00ff41;
-            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
-            font-size: 24px;
-            line-height: 1.2;
-            padding: 20px;
-            margin: 20px 0;
-            white-space: pre;
-            text-align: left;
-            box-shadow: inset 0 0 20px rgba(0, 255, 65, 0.2);
-        }}
-        .controls {{
-            background: #111;
-            border: 2px solid #00ff41;
-            padding: 20px;
-            margin: 15px 0;
-            border-radius: 8px;
-            box-shadow: 0 0 15px rgba(0, 255, 65, 0.2);
-        }}
-        .control-buttons {{
-            display: grid;
-            grid-template-columns: repeat(3, 70px);
-            grid-template-rows: repeat(3, 70px);
-            gap: 8px;
-            justify-content: center;
-            margin: 15px 0;
-        }}
-        .control-btn {{
-            background: #222;
-            border: 2px solid #00ff41;
-            color: #00ff41;
-            font-size: 20px;
-            font-weight: bold;
-            cursor: pointer;
-            border-radius: 6px;
-            transition: all 0.3s;
-            font-family: 'Monaco', monospace;
-        }}
-        .control-btn:hover {{
-            background: #00ff41;
-            color: #000;
-            box-shadow: 0 0 15px #00ff41;
-            transform: translateY(-2px);
-        }}
-        .control-btn:active {{
-            transform: scale(0.95);
-        }}
-        .empty-btn {{
-            background: transparent;
-            border: none;
-            cursor: default;
-        }}
-        .empty-btn:hover {{
-            background: transparent;
-            color: transparent;
-            box-shadow: none;
-            transform: none;
-        }}
-        .info {{
-            text-align: center;
-            margin: 15px 0;
-            font-size: 14px;
-            color: #888;
-        }}
-        .legend {{
-            background: #111;
-            border: 2px solid #00ff41;
-            padding: 15px;
-            margin: 15px 0;
-            border-radius: 8px;
-            box-shadow: 0 0 15px rgba(0, 255, 65, 0.2);
-        }}
-        .legend-item {{
-            margin: 8px 0;
-            font-size: 16px;
-        }}
-        .player {{ color: #ff0040; text-shadow: 0 0 10px #ff0040; }}
-        .obstacle {{ color: #8b4513; text-shadow: 0 0 5px #8b4513; }}
-        .empty {{ color: #333; }}
-        
-        .status {{
-            background: #111;
-            border: 2px solid #00ff41;
-            padding: 15px;
-            margin: 15px 0;
-            border-radius: 8px;
-            box-shadow: 0 0 15px rgba(0, 255, 65, 0.2);
-        }}
-        
-        .framework-info {{
-            background: #0a0a0a;
-            border: 1px solid #666;
-            padding: 15px;
-            margin: 10px 0;
-            border-radius: 5px;
-            font-size: 12px;
-            color: #999;
-        }}
-        
-        .manager-status {{
-            background: #001122;
-            border: 1px solid #0088cc;
-            padding: 10px;
-            margin: 5px 0;
-            border-radius: 3px;
-            font-size: 11px;
-            color: #88ccff;
-        }}
-        
-        .success {{ color: #00ff41; }}
-        .error {{ color: #ff4040; }}
+        body {{ font-family: Arial, sans-serif; padding: 50px; text-align: center; background: #1a1a1a; color: #fff; }}
+        .error {{ background: #ff4444; padding: 20px; border-radius: 8px; max-width: 600px; margin: 0 auto; }}
+        .retry {{ margin-top: 20px; }}
+        .retry a {{ color: #4CAF50; text-decoration: none; }}
     </style>
 </head>
 <body>
-    <div class="container">
-        <h1>🎮 Framework Demo - Rendering & Input Modules</h1>
-        <div class="subtitle">Showcasing modular rendering and input system capabilities</div>
-        
-        <div class="game-container">
-            <div id="gameGrid">{}</div>
-            
-            <div class="controls">
-                <h3>Movement Controls</h3>
-                <div class="control-buttons">
-                    <button class="control-btn empty-btn"></button>
-                    <button class="control-btn" onclick="move('up')" title="Move Up (W)">↑</button>
-                    <button class="control-btn empty-btn"></button>
-                    
-                    <button class="control-btn" onclick="move('left')" title="Move Left (A)">←</button>
-                    <button class="control-btn empty-btn"></button>
-                    <button class="control-btn" onclick="move('right')" title="Move Right (D)">→</button>
-                    
-                    <button class="control-btn empty-btn"></button>
-                    <button class="control-btn" onclick="move('down')" title="Move Down (S)">↓</button>
-                    <button class="control-btn empty-btn"></button>
-                </div>
-                <div class="info">
-                    Use WASD keys or click the buttons to move
-                </div>
-            </div>
-            
-            <div class="status">
-                <h3>Game Status</h3>
-                <div>Player Position: <span id="playerPos">({}, {})</span></div>
-                <div>Last Action: <span id="lastAction">Game Started</span></div>
-                <div>Input Method: <span id="inputMethod">Loading...</span></div>
-            </div>
-            
-            <div class="legend">
-                <h3>Legend</h3>
-                <div class="legend-item"><span class="player">@</span> - Player (Hero)</div>
-                <div class="legend-item"><span class="obstacle">#</span> - Obstacle (Blocks movement)</div>
-                <div class="legend-item"><span class="empty">.</span> - Empty space</div>
-            </div>
-            
-            <div class="framework-info">
-                <h3>🔧 Framework Architecture Showcase</h3>
-                <div class="manager-status">
-                    <strong>📡 Global Rendering Manager:</strong> WebClientRenderingDevice on port 8081<br>
-                    ✅ Handles all rendering commands globally<br>
-                    🎨 Renders via custom protocol to web client
-                </div>
-                <div class="manager-status">
-                    <strong>🎮 Global Input Manager:</strong> WebClientInputDevice on port 8086<br>
-                    ✅ Processes input events from multiple sources<br>
-                    🔗 Integrates keyboard, mouse, and custom input devices
-                </div>
-                <div class="manager-status">
-                    <strong>🏗️ ECS Systems:</strong> GridInputSystem → GridMovementSystem → GridCollisionSystem<br>
-                    ✅ Clean dependency-based system execution<br>
-                    📦 EntIt&lt;Component1, Component2&gt; provides type-safe component access
-                </div>
-                <div class="manager-status">
-                    <strong>🌐 Web Integration:</strong> HTTP API bridges web client to framework<br>
-                    ✅ Demonstrates modular architecture capabilities<br>
-                    🔄 Real-time state synchronization between client and server
-                </div>
-            </div>
+    <div class="error">
+        <h1>🚫 Error Loading Game</h1>
+        <p>{}</p>
+        <div class="retry">
+            <a href="/">Retry</a>
         </div>
     </div>
-
-    <script>
-        let playerPos = {{ x: {}, y: {} }};
-        let useGlobalInputManager = true; // Toggle between input methods
-        
-        // Update the display with current game state
-        function updateDisplay(gameState) {{
-            const gridElement = document.getElementById('gameGrid');
-            gridElement.innerHTML = gameState.replace(/@/g, '<span class="player">@</span>')
-                                              .replace(/#/g, '<span class="obstacle">#</span>')
-                                              .replace(/\./g, '<span class="empty">.</span>');
-        }}
-        
-        // Update player position display
-        function updatePlayerPosition(x, y) {{
-            playerPos.x = x;
-            playerPos.y = y;
-            document.getElementById('playerPos').textContent = `(${{x}}, ${{y}})`;
-        }}
-        
-        // Update last action display
-        function updateLastAction(message, isSuccess = true) {{
-            const element = document.getElementById('lastAction');
-            element.textContent = message;
-            element.className = isSuccess ? 'success' : 'error';
-        }}
-        
-        // Update input method display
-        function updateInputMethod(method) {{
-            document.getElementById('inputMethod').textContent = method;
-        }}
-        
-        // Move player using the legacy HTTP API
-        async function move(direction) {{
-            try {{
-                const response = await fetch('/move', {{
-                    method: 'POST',
-                    headers: {{
-                        'Content-Type': 'application/json',
-                    }},
-                    body: JSON.stringify({{ direction: direction }})
-                }});
-                
-                const data = await response.json();
-                
-                if (data.success) {{
-                    updateDisplay(data.gameState);
-                    updatePlayerPosition(data.playerPosition.x, data.playerPosition.y);
-                    updateLastAction(`Moved ${{direction}} to (${{data.playerPosition.x}}, ${{data.playerPosition.y}})`, true);
-                    updateInputMethod(data.inputMethod || "HTTP API");
-                    console.log(`Player moved ${{direction}} to (${{data.playerPosition.x}}, ${{data.playerPosition.y}})`);
-                }} else {{
-                    updateLastAction(`Cannot move ${{direction}} - blocked or out of bounds`, false);
-                    console.log(`Movement ${{direction}} blocked`);
-                }}
-            }} catch (error) {{
-                console.error('Error moving player:', error);
-                updateLastAction('Error communicating with server', false);
-            }}
-        }}
-        
-        // Poll game state (also processes global input manager)
-        async function pollGameState() {{
-            try {{
-                const response = await fetch('/state');
-                const data = await response.json();
-                
-                updateDisplay(data.gameState);
-                updatePlayerPosition(data.playerPosition.x, data.playerPosition.y);
-                updateInputMethod(data.inputMethod || "Unknown");
-                
-                if (data.moved) {{
-                    updateLastAction(`Global Input: ${{data.lastInput}}`, true);
-                }}
-            }} catch (error) {{
-                console.error('Error polling state:', error);
-            }}
-        }}
-        
-        // Get input manager info
-        async function getInputInfo() {{
-            try {{
-                const response = await fetch('/input-info');
-                const data = await response.json();
-                console.log('Input Manager Info:', data);
-            }} catch (error) {{
-                console.error('Error getting input info:', error);
-            }}
-        }}
-        
-        // Keyboard controls
-        document.addEventListener('keydown', function(event) {{
-            switch(event.key.toLowerCase()) {{
-                case 'w':
-                case 'arrowup':
-                    event.preventDefault();
-                    move('up');
-                    break;
-                case 's':
-                case 'arrowdown':
-                    event.preventDefault();
-                    move('down');
-                    break;
-                case 'a':
-                case 'arrowleft':
-                    event.preventDefault();
-                    move('left');
-                    break;
-                case 'd':
-                case 'arrowright':
-                    event.preventDefault();
-                    move('right');
-                    break;
-            }}
-        }});
-        
-        // Initialize display
-        updateDisplay(`{}`);
-        updatePlayerPosition({}, {});
-        
-        // Poll state regularly to showcase global input manager
-        setInterval(pollGameState, 100);
-        
-        // Get input manager info on load
-        getInputInfo();
-        
-        // Give focus to the page so keyboard events work
-        window.focus();
-        document.body.focus();
-        
-        console.log("🎮 Framework Demo loaded!");
-        console.log("🔧 Global Rendering Manager: localhost:8081");
-        console.log("🎮 Global Input Manager: localhost:8086");
-        console.log("📡 ECS Game Server: localhost:8085");
-        console.log("🌟 This demo showcases the modular rendering and input framework!");
-    </script>
 </body>
-</html>"#, 
-        initial_state.replace("@", "<span class=\"player\">@</span>")
-                    .replace("#", "<span class=\"obstacle\">#</span>")
-                    .replace(".", "<span class=\"empty\">.</span>"),
-        player_pos.0, player_pos.1,
-        player_pos.0, player_pos.1,
-        initial_state,
-        player_pos.0, player_pos.1)
+</html>"#, error_message)
     }
 }
 
