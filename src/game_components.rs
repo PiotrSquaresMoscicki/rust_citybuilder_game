@@ -1,4 +1,4 @@
-use crate::ecs_clean::{Component};
+use crate::ecs::{Component};
 use crate::core::math::{Vector2d};
 use std::any::Any;
 
